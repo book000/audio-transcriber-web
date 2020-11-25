@@ -1,24 +1,24 @@
 # audio-transcriber-web
 
-ブラウザを用いてマイクからの音声を`SpeechRecognition`を使って自動的に書き起こし、ファイルに書き込む。
+[日本語のREADMEはこちらから](README-ja.md)
+
+Using `SpeechRecognition` of browser, audio from the microphone automatically transcribe and written to file.
 
 - [GitHub Pages](https://book000.github.io/audio-transcriber-web/static/index.html)
-- 動画・音声ファイルからの文字起こしは[book000/audio-transcriber-docker](https://github.com/book000/audio-transcriber-docker)
+- For transcriptions from video and audio files: [book000/audio-transcriber-docker](https://github.com/book000/audio-transcriber-docker)
 
 ## Warning / Disclaimer
 
-**このプロジェクトを使用したことによって引き起こされた問題に関して開発者は一切の責任を負いません。**  
 **The author is not responsible for any problems caused by the user using this project.**
 
-というか、それなりに真面目なことに使うのであれば[GCPのSpeech-to-Text](https://cloud.google.com/speech-to-text)とかを使いましょう。
-
-一切のサポートはしません。(no support)
+Or rather, if you want to use it seriously, use [Google Cloud Platform Speech-to-Text](https://cloud.google.com/speech-to-text).  
+We do not provide any support.
 
 ## Feature
 
-- `API URL`を入力することで、指定したアドレスに書き起こしたテキストを自動的に送信します。
-- `AutoStart`機能をオンにすることで、ページにアクセスした時やリロードした瞬間から録音を開始します。(beta)
-- `API URL`と`AutoStart`の設定内容は[localStorage](https://developer.mozilla.org/ja/docs/Web/API/Window/localStorage)に保存し、保持します。
+- Input the `API URL`, can send the transcribed text to the specified address automatically.
+- With the `AutoStart` feature turned on, recording will start the moment you visit the page or reload. (beta)
+- The `API URL` and `AutoStart` settings are stored and maintained in [localStorage](https://developer.mozilla.org/en/docs/Web/API/Window/localStorage).
 
 ## Requirements
 
@@ -46,13 +46,12 @@
 
 ### 5. Click the `Start recording`
 
-`AutoStart`をオンにしておくとページにアクセスした瞬間から録音開始します。
+If you turn on `AutoStart`, recording will start the moment you access the page.
 
 ## Notes
 
-- `api.php`をどこかのサーバにおいてそこへのアドレスを`API URL`に設定して動作させることもできる。
+- It also works if you put `api.php` on a server somewhere and set the address to it to an `API URL`.
 
-## ライセンス / License
+## License
 
-このプロジェクトのライセンスは[MIT License](https://github.com/book000/audio-transcriber-web/blob/master/LICENSE)です。  
 The license for this project is [MIT License](https://github.com/book000/audio-transcriber-web/blob/master/LICENSE).
