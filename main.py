@@ -44,9 +44,9 @@ def main(data: DataModel = Body(...)):
         f.write(json.dumps(data.full))
 
 
-if len(sys.argv) >= 1 and sys.argv[1] == "--open-browser":
+if len(sys.argv) >= 2 and sys.argv[1] == "--open-browser":
     if os.path.exists("C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"):
-        webbrowser.get('"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" %s').open(
+        webbrowser.get('"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" %s &').open(
             "http://localhost:8080/")
     else:
         webbrowser.open("http://localhost:8080")
