@@ -1,8 +1,9 @@
 # audio-transcriber-web
 
-ブラウザを用いてマイクからの音声を`webkitSpeechRecognition`を使って自動的に書き起こし、ファイルに書き込む。
+ブラウザを用いてマイクからの音声を`SpeechRecognition`を使って自動的に書き起こし、ファイルに書き込む。
 
-動画・音声ファイルからの文字起こしは[book000/audio-transcriber-docker](https://github.com/book000/audio-transcriber-docker)
+- [GitHub Pages](https://book000.github.io/audio-transcriber-web/static/index.html)
+- 動画・音声ファイルからの文字起こしは[book000/audio-transcriber-docker](https://github.com/book000/audio-transcriber-docker)
 
 ## Warning / Disclaimer
 
