@@ -1,0 +1,197 @@
+function start_recognition(recognitionId) {
+    document.getElementById("startstop").innerHTML = "Stop recording";
+    SpeechRecognition = webkitSpeechRecognition || SpeechRecognition;
+    recognition = new SpeechRecognition();
+    const listening = new Listening(recognitionId);
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "ja";
+    recognition.onresult = function (event) {
+        console.log(event);
+        for (var i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+                listening.end(event.resultIndex, Math.floor(event.timeStamp / 1000), event.results[i][0].transcript);
+            } else {
+                listening.runResults(event.resultIndex, Math.floor(event.timeStamp / 1000), event.results[i]);
+            }
+        }
+    };
+    recognition.onend = function (event) {
+        console.log("onend", event);
+        listening.remove();
+        if (started) start_recognition(recognitionId + 1);
+    };
+    recognition.onstart = function (event) {
+        console.log("onstart", event);
+    };
+    recognition.onaudiostart = function (event) {
+        console.log("onaudiostart", event);
+    };
+    recognition.onaudioend = function (event) {
+        console.log("onaudioend", event);
+    };
+    recognition.onspeechstart = function (event) {
+        console.log("onspeechstart", event);
+    };
+    recognition.onspeechend = function (event) {
+        console.log("onspeechend", event);
+    };
+    recognition.onerror = function (event) {
+        console.log("onerror", event);
+    };
+    recognition.start();
+}
+class Listening {
+    constructor(recognitionId) {
+        this.recognitionId = recognitionId;
+        this.listeningElement = document.getElementById("listening")
+        this.recognitionElement = document.createElement("div");
+        this.recognitionElement.classList.add("listening-recognition");
+        this.recognitionElement.id = "recognition-" + recognitionId;
+        this.listeningElement.appendChild(this.recognitionElement);
+        this.timeStamp = [];
+    }
+
+    start(resultId) {
+        const resultsElem = document.createElement("ul")
+        resultsElem.classList.add("listening-results");
+        resultsElem.id = "results-" + resultId;
+        this.recognitionElement.appendChild(resultsElem);
+    }
+
+    runResults(resultId, timeStamp, results) {
+        let resultsElem = document.getElementById("results-" + resultId);
+        if (resultsElem == null) {
+            this.start(resultId);
+            resultsElem = document.getElementById("results-" + resultId);
+        }
+        while (resultsElem.lastElementChild != null) {
+            resultsElem.removeChild(resultsElem.lastElementChild);
+        }
+
+        if (this.timeStamp[resultId] == undefined || this.timeStamp[resultId] == null) {
+            this.timeStamp[resultId] = timeStamp;
+        }
+
+        for (let result of Array.from(results)) {
+            const resultElem = document.createElement("li");
+
+            const secElem = document.createElement("span");
+            secElem.classList.add("result-sec");
+            secElem.textContent = this.timeStamp[resultId] + "s";
+            resultElem.appendChild(secElem);
+
+            const percentElem = document.createElement("span");
+            percentElem.classList.add("result-percent");
+            percentElem.textContent = Math.round(result.confidence * 100) + "%";
+            resultElem.appendChild(percentElem);
+
+            const contentElem = document.createElement("span");
+            contentElem.classList.add("result-content");
+            contentElem.textContent = result.transcript;
+            resultElem.appendChild(contentElem);
+
+            resultsElem.appendChild(resultElem);
+        }
+    }
+
+    end(resultId, timeStamp, transcript) {
+        const resultsElem = document.getElementById("results-" + resultId);
+        if (resultsElem == null) {
+            return;
+        }
+        resultsElem.remove();
+
+        if (this.timeStamp[resultId] == undefined || this.timeStamp[resultId] == null) {
+            this.timeStamp[resultId] = timeStamp;
+        }
+
+        fullData.push({
+            "timeStamp": this.timeStamp[resultId],
+            "transcript": transcript
+        });
+
+        const messages = document.getElementById("messages");
+        const message_line = document.createElement("div");
+        message_line.classList.add("message-line");
+
+        const message_date = document.createElement("span");
+        message_date.classList.add("message-sec");
+        message_date.textContent = this.timeStamp[resultId] + "s";
+        message_line.appendChild(message_date);
+
+        const message_text = document.createElement("span");
+        message_text.classList.add("message-text");
+        message_text.innerHTML = transcript;
+        message_line.appendChild(message_text);
+
+        messages.appendChild(message_line);
+        messages.scrollTop = messages.scrollHeight;
+
+        sendResult(this.timeStamp[resultId], transcript);
+    }
+
+    remove() {
+        this.recognitionElement.remove();
+    }
+}
+
+function sendResult(timeStamp, transcript) {
+    const apiurl = document.getElementById("api_url").value;
+    if (apiurl == "") {
+        return;
+    }
+    axios.post(apiurl, {
+            startTime: startTime,
+            timeStamp: timeStamp,
+            transcript: transcript,
+            full: fullData
+        })
+        .then(function (response) {
+            if (response.status != 200) {
+                console.error(response);
+            }
+        }).catch(function (error) {
+            console.error(error);
+        });
+}
+
+onload();
+
+function onload() {
+    const apiurl = localStorage.getItem("audio-transcriber-web-api-url");
+    if (apiurl != null) {
+        document.getElementById("api_url").value = apiurl;
+    }
+    const autoStart = localStorage.getItem("audio-transcriber-web-auto-start");
+    if (autoStart != null) {
+        document.getElementById("auto-start").checked = autoStart.toLowerCase() === "true";
+    }
+    if (document.getElementById("auto-start").checked) {
+        started = true;
+        startTime = new Date().getTime() / 1000;
+        start_recognition(0);
+    }
+}
+
+fullData = [];
+started = false;
+
+document.getElementById("api_url").onchange = function () {
+    localStorage.setItem("audio-transcriber-web-api-url", document.getElementById("api_url").value);
+}
+document.getElementById("auto-start").onchange = function () {
+    localStorage.setItem("audio-transcriber-web-auto-start", document.getElementById("auto-start").checked.toString());
+}
+document.getElementById("startstop").onclick = function () {
+    if (!started) {
+        started = true;
+        startTime = new Date().getTime() / 1000;
+        start_recognition(0);
+    } else {
+        document.getElementById("startstop").innerHTML = "Start recording";
+        started = false;
+        recognition.stop();
+        recognition = null;
+    }
+}

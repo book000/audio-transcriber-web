@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="ja">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>audio-transcriber-web</title>
+        <link href="style.css" rel="stylesheet">
+    </head>
+    <body>
+        <div class="container">
+            <span class="container-item">API URL: <input type="text" id="api_url"
+                    placeholder="http://localhost:8080/api"></span>
+            <span class="container-item">AutoStart: <input type="checkbox" id="auto-start"></span>
+            <span class="container-item"><button id="startstop">Start recording</button></span>
+        </div>
+        <div id="listening"></div>
+        <div id="messages"></div>
+        <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+        <script src="./script.js"></script>
+    </body>
+</html>
