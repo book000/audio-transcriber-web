@@ -18,26 +18,33 @@ function start_recognition(recognitionId) {
     };
     recognition.onend = function (event) {
         console.log("onend", event);
+        document.getElementById("status-circle").style.backgroundColor = "red";
         listening.remove();
         if (started) start_recognition(recognitionId + 1);
     };
     recognition.onstart = function (event) {
         console.log("onstart", event);
+        document.getElementById("status-circle").style.backgroundColor = "cyan";
     };
     recognition.onaudiostart = function (event) {
         console.log("onaudiostart", event);
+        document.getElementById("status-circle").style.backgroundColor = "limegreen";
     };
     recognition.onaudioend = function (event) {
         console.log("onaudioend", event);
+        document.getElementById("status-circle").style.backgroundColor = "cyan";
     };
     recognition.onspeechstart = function (event) {
         console.log("onspeechstart", event);
+        document.getElementById("status-circle").style.backgroundColor = "lime";
     };
     recognition.onspeechend = function (event) {
         console.log("onspeechend", event);
+        document.getElementById("status-circle").style.backgroundColor = "limegreen";
     };
     recognition.onerror = function (event) {
         console.log("onerror", event);
+        document.getElementById("status-circle").style.backgroundColor = "red";
     };
     recognition.start();
 }
@@ -157,6 +164,8 @@ function sendResult(timeStamp, transcript) {
 }
 
 onload();
+fullData = [];
+started = false;
 
 function onload() {
     const apiurl = localStorage.getItem("audio-transcriber-web-api-url");
@@ -173,9 +182,6 @@ function onload() {
         start_recognition(0);
     }
 }
-
-fullData = [];
-started = false;
 
 document.getElementById("api_url").onchange = function () {
     localStorage.setItem("audio-transcriber-web-api-url", document.getElementById("api_url").value);

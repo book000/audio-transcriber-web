@@ -57,3 +57,10 @@ body {
 #api_url {
     width: 30em;
 }
+
+#status-circle {
+    width: 1.2em;
+    padding-top: 100%;
+    border-radius: 50%;
+    background-color: yellow;
+}
