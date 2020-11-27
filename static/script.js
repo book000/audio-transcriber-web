@@ -163,9 +163,9 @@ function sendResult(timeStamp, transcript) {
         });
 }
 
-onload();
 fullData = [];
 started = false;
+onload();
 
 function onload() {
     const apiurl = localStorage.getItem("audio-transcriber-web-api-url");
