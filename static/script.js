@@ -45,6 +45,7 @@ function start_recognition(recognitionId) {
     recognition.onerror = function (event) {
         console.log("onerror", event);
         document.getElementById("status-circle").style.backgroundColor = "red";
+        document.getElementById("status-message").innerHTML = event.error;
     };
     recognition.start();
 }

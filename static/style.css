@@ -64,3 +64,8 @@ body {
     border-radius: 50%;
     background-color: yellow;
 }
+
+#status-message {
+    font-family: monospace;
+    font-size: 0.8em;
+}
