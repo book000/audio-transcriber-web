@@ -25,6 +25,9 @@ def root():
     with open(os.path.dirname(os.path.abspath(__file__)) + "/static/index.html") as f:
         return Response(content=f.read(), media_type="text/html")
 
+@app.head("/api")
+def main():
+    return Response(content="Successful")
 
 @app.post("/api")
 def main(data: DataModel = Body(...)):
