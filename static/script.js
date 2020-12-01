@@ -164,6 +164,34 @@ function sendResult(timeStamp, transcript) {
         });
 }
 
+function checkAPIURL() {
+    if (!started) {
+        return;
+    }
+    const apiurl = document.getElementById("api_url").value;
+    if (apiurl == "") {
+        return;
+    }
+    axios.head(apiurl)
+        .then(function (response) {
+            console.log("API active.");
+        })
+        .catch(function (error) {
+            if (error.response) {
+                console.error("API failed[RESPONSE]: " + error.response.status);
+                console.error(error.response);
+            } else if (error.request) {
+                console.error("API failed[REQUEST]:");
+                console.error(error.request);
+            } else {
+                console.error("API failed[ERROR]: " + error.message);
+                if (confirm("The API is not working properly. Close this page?")) {
+                    window.close();
+                }
+            }
+        });
+}
+
 fullData = [];
 started = false;
 onload();
@@ -182,6 +210,8 @@ function onload() {
         startTime = new Date().getTime() / 1000;
         start_recognition(0);
     }
+
+    setInterval(checkAPIURL, 10000);
 }
 
 document.getElementById("api_url").onchange = function () {
