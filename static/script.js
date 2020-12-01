@@ -180,6 +180,9 @@ function checkAPIURL() {
             if (error.response) {
                 console.error("API failed[RESPONSE]: " + error.response.status);
                 console.error(error.response);
+                if (confirm("The API is not working properly(" + error.response.status + "). Close this page?")) {
+                    window.close();
+                }
             } else if (error.request) {
                 console.error("API failed[REQUEST]:");
                 console.error(error.request);
