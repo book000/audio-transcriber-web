@@ -183,9 +183,12 @@ function checkAPIURL() {
             } else if (error.request) {
                 console.error("API failed[REQUEST]:");
                 console.error(error.request);
+                if (confirm("The API is not working properly. Close this page?")) {
+                    window.close();
+                }
             } else {
                 console.error("API failed[ERROR]: " + error.message);
-                if (confirm("The API is not working properly. Close this page?")) {
+                if (confirm("The API is not working properly(" + error.message + "). Close this page?")) {
                     window.close();
                 }
             }
