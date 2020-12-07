@@ -172,6 +172,11 @@ function checkAPIURL() {
     if (apiurl == "") {
         return;
     }
+    if (axios != undefined) {
+        const script = document.createElement("script");
+        script.type = "text/javascript";
+        script.src = "https://unpkg.com/axios/dist/axios.min.js";
+    }
     axios.head(apiurl)
         .then(function (response) {
             console.log("API active.");
@@ -196,6 +201,29 @@ function checkAPIURL() {
                 }
             }
         });
+}
+
+function startFullScreen() {
+    if (!screenfull.isEnabled) {
+        alert("Fullscreen is not supported");
+        return;
+    }
+    screenfull.request(document.getElementById("main")).then(function () {
+        console.log('Fullscreen mode: ' + (screenfull.isFullscreen ? 'enabled' : 'disabled'));
+    });
+}
+
+function stopFullScreen() {
+    if (!screenfull.isEnabled) {
+        alert("Fullscreen is not supported");
+        return;
+    }
+    document.documentElement.cancelFullScreen = document.exitFullscreen || document.mozCancelFullScreen || document.webkitExitFullscreen || document.msExitFullscreen;
+    document.documentElement.cancelFullScreen();
+}
+
+function isFullScreen() {
+    return document.fullscreenElement || document.mozFullScreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
 }
 
 fullData = [];
@@ -237,4 +265,7 @@ document.getElementById("startstop").onclick = function () {
         recognition.stop();
         recognition = null;
     }
+}
+document.getElementById("fullscreen").onclick = function () {
+    startFullScreen()
 }
