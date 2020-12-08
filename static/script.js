@@ -267,5 +267,9 @@ document.getElementById("startstop").onclick = function () {
     }
 }
 document.getElementById("fullscreen").onclick = function () {
-    startFullScreen()
+    if (screenfull.isFullscreen) {
+        startFullScreen();
+    } else {
+        stopFullScreen();
+    }
 }
