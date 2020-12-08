@@ -210,6 +210,9 @@ function startFullScreen() {
     }
     screenfull.request(document.getElementById("main")).then(function () {
         console.log('Fullscreen mode: ' + (screenfull.isFullscreen ? 'enabled' : 'disabled'));
+        if (screenfull.isFullscreen) {
+            document.getElementById("fullscreen").innerHTML = "Stop fullscreen";
+        }
     });
 }
 
@@ -218,8 +221,8 @@ function stopFullScreen() {
         alert("Fullscreen is not supported");
         return;
     }
-    document.documentElement.cancelFullScreen = document.exitFullscreen || document.mozCancelFullScreen || document.webkitExitFullscreen || document.msExitFullscreen;
-    document.documentElement.cancelFullScreen();
+    screenfull.exit();
+    document.getElementById("fullscreen").innerHTML = "Start fullscreen";
 }
 
 function isFullScreen() {
@@ -267,7 +270,7 @@ document.getElementById("startstop").onclick = function () {
     }
 }
 document.getElementById("fullscreen").onclick = function () {
-    if (screenfull.isFullscreen) {
+    if (!screenfull.isFullscreen) {
         startFullScreen();
     } else {
         stopFullScreen();
