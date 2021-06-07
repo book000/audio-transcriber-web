@@ -6,11 +6,12 @@ function start_recognition(recognitionId) {
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = "ja";
+    recognition.maxAlternatives = 3;
     recognition.onresult = function (event) {
         console.log(event);
         for (var i = event.resultIndex; i < event.results.length; ++i) {
             if (event.results[i].isFinal) {
-                listening.end(event.resultIndex, Math.floor(event.timeStamp / 1000), event.results[i][0].transcript);
+                listening.end(event.resultIndex, Math.floor(event.timeStamp / 1000), event.results[i]);
             } else {
                 listening.runResults(event.resultIndex, Math.floor(event.timeStamp / 1000), event.results[i]);
             }
@@ -103,7 +104,7 @@ class Listening {
         }
     }
 
-    end(resultId, timeStamp, transcript) {
+    end(resultId, timeStamp, results) {
         const resultsElem = document.getElementById("results-" + resultId);
         if (resultsElem == null) {
             return;
@@ -114,9 +115,11 @@ class Listening {
             this.timeStamp[resultId] = timeStamp;
         }
 
+        const transcript = results[0].transcript
         fullData.push({
             "timeStamp": this.timeStamp[resultId],
-            "transcript": transcript
+            "transcript": transcript,
+            "alternatives": Array.from(results).slice(1).map(x => x.transcript)
         });
 
         const messages = document.getElementById("messages");
@@ -132,6 +135,39 @@ class Listening {
         message_text.classList.add("message-text");
         message_text.innerHTML = transcript;
         message_line.appendChild(message_text);
+
+        const alt_messages = document.createElement("ul");
+        alt_messages.classList.add("alt-messages");
+
+        for (const alt of Array.from(results).slice(1).map(x => x.transcript)) {
+            const alt_message = document.createElement("li");
+            const fragment = document.createDocumentFragment();
+            const diff = JsDiff["diffChars"](transcript, alt)
+            for (let i = 0; i < diff.length; i++) {
+                if (diff[i].added && diff[i + 1] && diff[i + 1].removed) {
+                    const swap = diff[i];
+                    diff[i] = diff[i + 1];
+                    diff[i + 1] = swap;
+                }
+
+                let node;
+                if (diff[i].removed) {
+                    node = document.createElement('del');
+                    node.appendChild(document.createTextNode(diff[i].value));
+                } else if (diff[i].added) {
+                    node = document.createElement('ins');
+                    node.appendChild(document.createTextNode(diff[i].value));
+                } else {
+                    node = document.createTextNode(diff[i].value);
+                }
+                fragment.appendChild(node);
+            }
+            alt_message.textContent = '';
+            alt_message.appendChild(fragment);
+            alt_messages.appendChild(alt_message);
+        }
+
+        message_line.appendChild(alt_messages);
 
         messages.appendChild(message_line);
         messages.scrollTop = messages.scrollHeight;
@@ -150,11 +186,11 @@ function sendResult(timeStamp, transcript) {
         return;
     }
     axios.post(apiurl, {
-            startTime: startTime,
-            timeStamp: timeStamp,
-            transcript: transcript,
-            full: fullData
-        })
+        startTime: startTime,
+        timeStamp: timeStamp,
+        transcript: transcript,
+        full: fullData
+    })
         .then(function (response) {
             if (response.status != 200) {
                 console.error(response);

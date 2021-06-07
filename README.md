@@ -19,6 +19,7 @@ We do not provide any support.
 - Input the `API URL`, can send the transcribed text to the specified address automatically.
 - With the `AutoStart` feature turned on, recording will start the moment you visit the page or reload. (beta)
 - The `API URL` and `AutoStart` settings are stored and maintained in [localStorage](https://developer.mozilla.org/en/docs/Web/API/Window/localStorage).
+- Shows alternatives to recognize sentences and diffs by hovering the results.
 
 ## Requirements
 
@@ -55,3 +56,8 @@ If you turn on `AutoStart`, recording will start the moment you access the page.
 ## License
 
 The license for this project is [MIT License](https://github.com/book000/audio-transcriber-web/blob/master/LICENSE).
+
+This project contains several libraries. The library licenses are as follows.
+
+- [axios](https://github.com/axios/axios) MIT License, Copyright (c) 2014-present Matt Zabriskie
+- [jsdifflib](https://github.com/cemerick/jsdifflib) BSD license, 2007 - 2011 Chas Emerick
