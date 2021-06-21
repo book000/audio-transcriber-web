@@ -35,7 +35,7 @@ We do not provide any support.
 
 ### 2. Install packages from `requirements.txt`
 
-`pip3 install -r -U requirements.txt`
+`pip3 install -U -r requirements.txt`
 
 ### 3. Run `main.py --open-browser`
 
