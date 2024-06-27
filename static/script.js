@@ -2,7 +2,9 @@ function start_recognition(recognitionId) {
   document.getElementById("startstop").innerHTML = "Stop recording";
   const SpeechRecognition = webkitSpeechRecognition || SpeechRecognition;
   const recognition = new SpeechRecognition();
-  listening = new Listening(recognitionId);
+  if (!listening) {
+    listening = new Listening(recognitionId);
+  }
   recognition.continuous = true;
   recognition.interimResults = true;
   recognition.maxAlternatives = 3;
@@ -58,8 +60,7 @@ function start_recognition(recognitionId) {
 }
 
 class Listening {
-  constructor(recognitionId) {
-    this.recognitionId = recognitionId;
+  constructor() {
     this.listeningMessagesManager = new MessagesManager(
       document.getElementById("listening")
     );
