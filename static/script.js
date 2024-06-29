@@ -2,9 +2,6 @@ function start_recognition(recognitionId) {
   document.getElementById("startstop").innerHTML = "Stop recording";
   const SpeechRecognition = webkitSpeechRecognition || SpeechRecognition;
   const recognition = new SpeechRecognition();
-  if (typeof listening === "undefined") {
-    listening = new Listening(recognitionId);
-  }
   recognition.continuous = true;
   recognition.interimResults = true;
   recognition.maxAlternatives = 3;
@@ -390,6 +387,7 @@ function isFullScreen() {
 
 fullData = [];
 started = false;
+listening = new Listening();
 onload();
 
 function onload() {
