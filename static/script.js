@@ -2,7 +2,7 @@ function start_recognition(recognitionId) {
   document.getElementById("startstop").innerHTML = "Stop recording";
   const SpeechRecognition = webkitSpeechRecognition || SpeechRecognition;
   const recognition = new SpeechRecognition();
-  if (!listening) {
+  if (typeof listening === "undefined") {
     listening = new Listening(recognitionId);
   }
   recognition.continuous = true;
