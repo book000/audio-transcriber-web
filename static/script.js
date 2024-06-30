@@ -9,10 +9,10 @@ function start_recognition(recognitionId) {
     console.log(event);
     for (var i = 0; i < event.results.length; ++i) {
       if (event.results[i].isFinal) {
-        listening.end(i, Math.floor(event.timeStamp / 1000), event.results[i]);
+        listening.end(`${recognitionId}-${i}`, Math.floor(event.timeStamp / 1000), event.results[i]);
       } else {
         listening.runResults(
-          i,
+          `${recognitionId}-${i}`,
           Math.floor(event.timeStamp / 1000),
           event.results[i]
         );
