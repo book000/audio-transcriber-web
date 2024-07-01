@@ -9,7 +9,11 @@ function start_recognition(recognitionId) {
     console.log(event);
     for (var i = 0; i < event.results.length; ++i) {
       if (event.results[i].isFinal) {
-        listening.end(`${recognitionId}-${i}`, Math.floor(event.timeStamp / 1000), event.results[i]);
+        listening.end(
+          `${recognitionId}-${i}`,
+          Math.floor(event.timeStamp / 1000),
+          event.results[i]
+        );
       } else {
         listening.runResults(
           `${recognitionId}-${i}`,
@@ -64,12 +68,20 @@ class Listening {
     this.messagesManager = new MessagesManager(
       document.getElementById("messages")
     );
+
     this.timeStamp = [];
     this.recognitionStartTimestamp = null;
   }
 
   recognitionStartHandler() {
     this.recognitionStartTimestamp = new Date().getTime() / 1000;
+
+    const timestampDisplayElement =
+      document.getElementById("timestamp-display");
+    this.listeningMessagesManager.setDisplayTimestamp(
+      timestampDisplayElement.checked
+    );
+    this.messagesManager.setDisplayTimestamp(timestampDisplayElement.checked);
   }
 
   runResults(resultId, timeStamp, results) {
@@ -395,6 +407,13 @@ function onload() {
   if (apiurl != null) {
     document.getElementById("api_url").value = apiurl;
   }
+  const timestampDisplay = localStorage.getItem(
+    "audio-transcriber-web-timestamp-display"
+  );
+  if (timestampDisplay != null) {
+    document.getElementById("timestamp-display").checked =
+      timestampDisplay.toLowerCase() === "true";
+  }
   const autoStart = localStorage.getItem("audio-transcriber-web-auto-start");
   if (autoStart != null) {
     document.getElementById("auto-start").checked =
@@ -420,6 +439,13 @@ document.getElementById("auto-start").onchange = function () {
   localStorage.setItem(
     "audio-transcriber-web-auto-start",
     document.getElementById("auto-start").checked.toString()
+  );
+};
+
+document.getElementById("timestamp-display").onchange = function () {
+  localStorage.setItem(
+    "audio-transcriber-web-timestamp-display",
+    document.getElementById("timestamp-display").checked.toString()
   );
 };
 
