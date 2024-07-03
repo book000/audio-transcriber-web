@@ -32,7 +32,7 @@ function start_recognition(recognitionId) {
   recognition.onstart = function (event) {
     console.log("onstart", event);
     document.getElementById("status-circle").style.backgroundColor = "cyan";
-    listening.recognitionStartHandler();
+    listening.recognitionStartHandler(event);
   };
   recognition.onaudiostart = function (event) {
     console.log("onaudiostart", event);
@@ -73,8 +73,8 @@ class Listening {
     this.recognitionStartTimestamp = null;
   }
 
-  recognitionStartHandler() {
-    this.recognitionStartTimestamp = new Date().getTime() / 1000;
+  recognitionStartHandler(event) {
+    this.recognitionStartTimestamp = (new Date().getTime() / 1000) - event.timeStamp;
 
     const timestampDisplayElement =
       document.getElementById("timestamp-display");
