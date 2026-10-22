@@ -29,9 +29,12 @@ function start_recognition(recognitionId) {
   };
   recognition.onend = function (event) {
     console.log("onend", event);
-    document.getElementById("status-circle").style.backgroundColor = "red";
-    listening.remove();
-    // 停止後に遅れて届いた旧インスタンスの onend では再起動しない
+    // 停止して即再開した場合、旧インスタンスの遅延 onend で新しい録音の表示を消さない
+    if (currentRecognition === null || currentRecognition === recognition) {
+      document.getElementById("status-circle").style.backgroundColor = "red";
+      listening.remove();
+    }
+    // 現在のインスタンスでなければ、停止済みまたは新しいインスタンスに置き換わっているため再起動しない
     if (started && currentRecognition === recognition) {
       start_recognition(recognitionId + 1);
     }
