@@ -213,7 +213,7 @@ class MessagesManager {
 
       const messageText = document.createElement("span");
       messageText.classList.add("message-text");
-      messageText.innerHTML = transcript.trim();
+      messageText.textContent = transcript.trim();
       messageLine.appendChild(messageText);
 
       const altMessages = document.createElement("ul");
