@@ -1,7 +1,11 @@
+// 停止ボタンから停止できるよう、稼働中のインスタンスを保持する
+let currentRecognition = null;
+
 function start_recognition(recognitionId) {
   document.getElementById("startstop").innerHTML = "Stop recording";
   const SpeechRecognition = webkitSpeechRecognition || SpeechRecognition;
   const recognition = new SpeechRecognition();
+  currentRecognition = recognition;
   recognition.continuous = true;
   recognition.interimResults = true;
   recognition.maxAlternatives = 3;
@@ -27,7 +31,10 @@ function start_recognition(recognitionId) {
     console.log("onend", event);
     document.getElementById("status-circle").style.backgroundColor = "red";
     listening.remove();
-    if (started) start_recognition(recognitionId + 1);
+    // 停止後に遅れて届いた旧インスタンスの onend では再起動しない
+    if (started && currentRecognition === recognition) {
+      start_recognition(recognitionId + 1);
+    }
   };
   recognition.onstart = function (event) {
     console.log("onstart", event);
@@ -457,8 +464,11 @@ document.getElementById("startstop").onclick = function () {
   } else {
     document.getElementById("startstop").innerHTML = "Start recording";
     started = false;
-    recognition.stop();
-    recognition = null;
+    if (currentRecognition !== null) {
+      const recognition = currentRecognition;
+      currentRecognition = null;
+      recognition.stop();
+    }
   }
 };
 
