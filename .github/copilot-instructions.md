@@ -4,7 +4,8 @@ Browser-based speech-to-text transcriber: a vanilla-JS/jQuery static frontend
 (`static/`) using the Web Speech API, plus two interchangeable backends that persist
 transcripts — `main.py` (FastAPI) and `api.php` (PHP).
 
-There is no build system, test suite, or linter in this repo. Do not suggest running or
+There is no build system or linter in this repo, and the only test is a dependency-free
+Node script (`tests/speech-recognition-support.test.js`). Do not suggest running or
 adding `npm`/`pytest`/`eslint` commands that do not exist here.
 
 ## Review priorities

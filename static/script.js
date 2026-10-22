@@ -1,10 +1,24 @@
 // 停止ボタンから停止できるよう、稼働中のインスタンスを保持する
 let currentRecognition = null;
 
+/**
+ * ブラウザが提供する音声認識のコンストラクタを返す。
+ * @returns {Function|null} 標準またはプレフィックス付きのコンストラクタ。どちらも無ければ null
+ */
+function resolveSpeechRecognition() {
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+
 function start_recognition(recognitionId) {
+  const RecognitionConstructor = resolveSpeechRecognition();
+  if (RecognitionConstructor === null) {
+    document.getElementById("status-message").textContent =
+      "Speech recognition is not supported in this browser.";
+    started = false;
+    return;
+  }
   document.getElementById("startstop").innerHTML = "Stop recording";
-  const SpeechRecognition = webkitSpeechRecognition || SpeechRecognition;
-  const recognition = new SpeechRecognition();
+  const recognition = new RecognitionConstructor();
   currentRecognition = recognition;
   recognition.continuous = true;
   recognition.interimResults = true;
