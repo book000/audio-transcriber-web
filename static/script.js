@@ -1,6 +1,9 @@
+// 停止ボタンから停止できるよう、稼働中のインスタンスを保持する
+let currentRecognition = null;
+
 /**
- * Returns the speech recognition constructor provided by the browser.
- * @returns {Function|null} The standard or prefixed constructor, or null if neither exists
+ * ブラウザが提供する音声認識のコンストラクタを返す。
+ * @returns {Function|null} 標準またはプレフィックス付きのコンストラクタ。どちらも無ければ null
  */
 function resolveSpeechRecognition() {
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
@@ -16,6 +19,7 @@ function start_recognition(recognitionId) {
   }
   document.getElementById("startstop").innerHTML = "Stop recording";
   const recognition = new RecognitionConstructor();
+  currentRecognition = recognition;
   recognition.continuous = true;
   recognition.interimResults = true;
   recognition.maxAlternatives = 3;
@@ -39,9 +43,15 @@ function start_recognition(recognitionId) {
   };
   recognition.onend = function (event) {
     console.log("onend", event);
-    document.getElementById("status-circle").style.backgroundColor = "red";
-    listening.remove();
-    if (started) start_recognition(recognitionId + 1);
+    // 停止して即再開した場合、旧インスタンスの遅延 onend で新しい録音の表示を消さない
+    if (currentRecognition === null || currentRecognition === recognition) {
+      document.getElementById("status-circle").style.backgroundColor = "red";
+      listening.remove();
+    }
+    // 現在のインスタンスでなければ、停止済みまたは新しいインスタンスに置き換わっているため再起動しない
+    if (started && currentRecognition === recognition) {
+      start_recognition(recognitionId + 1);
+    }
   };
   recognition.onstart = function (event) {
     console.log("onstart", event);
@@ -227,7 +237,7 @@ class MessagesManager {
 
       const messageText = document.createElement("span");
       messageText.classList.add("message-text");
-      messageText.innerHTML = transcript.trim();
+      messageText.textContent = transcript.trim();
       messageLine.appendChild(messageText);
 
       const altMessages = document.createElement("ul");
@@ -471,8 +481,11 @@ document.getElementById("startstop").onclick = function () {
   } else {
     document.getElementById("startstop").innerHTML = "Start recording";
     started = false;
-    recognition.stop();
-    recognition = null;
+    if (currentRecognition !== null) {
+      const recognition = currentRecognition;
+      currentRecognition = null;
+      recognition.stop();
+    }
   }
 };
 
