@@ -11,13 +11,13 @@ function start_recognition(recognitionId) {
       if (event.results[i].isFinal) {
         listening.end(
           `${recognitionId}-${i}`,
-          Math.floor(event.timeStamp / 1000),
+          event.timeStamp,
           event.results[i]
         );
       } else {
         listening.runResults(
           `${recognitionId}-${i}`,
-          Math.floor(event.timeStamp / 1000),
+          event.timeStamp,
           event.results[i]
         );
       }
@@ -70,11 +70,12 @@ class Listening {
     );
 
     this.timeStamp = [];
+    // Unix epoch milliseconds of the page time origin
     this.recognitionStartTimestamp = null;
   }
 
   recognitionStartHandler(event) {
-    this.recognitionStartTimestamp = (new Date().getTime() / 1000) - event.timeStamp;
+    this.recognitionStartTimestamp = new Date().getTime() - event.timeStamp;
 
     const timestampDisplayElement =
       document.getElementById("timestamp-display");
@@ -130,8 +131,8 @@ class MessagesManager {
 
   /*
   options:
-    recognitionStartTimestamp
-    timeStamp
+    recognitionStartTimestamp (Unix epoch ms)
+    timeStamp (ms since page time origin)
     transcript
     percent
     alternatives
@@ -186,8 +187,10 @@ class MessagesManager {
       this.target.removeChild(this.target.lastElementChild);
     }
     for (const message of this.messages) {
-      const sec = message.timeStamp;
-      const unixtime = Math.floor(message.recognitionStartTimestamp + sec);
+      const sec = Math.floor(message.timeStamp / 1000);
+      const unixtime = Math.floor(
+        (message.recognitionStartTimestamp + message.timeStamp) / 1000
+      );
       const transcript = message.transcript;
       const alternatives = message.alternatives;
 
