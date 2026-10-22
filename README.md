@@ -53,6 +53,10 @@ If you turn on `AutoStart`, recording will start the moment you access the page.
 
 - It also works if you put `api.php` on a server somewhere and set the address to it to an `API URL`.
 
+## Tests
+
+`node tests/speech-recognition-support.test.js`
+
 ## License
 
 The license for this project is [MIT License](https://github.com/book000/audio-transcriber-web/blob/master/LICENSE).

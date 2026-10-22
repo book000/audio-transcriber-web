@@ -1,7 +1,21 @@
+/**
+ * Returns the speech recognition constructor provided by the browser.
+ * @returns {Function|null} The standard or prefixed constructor, or null if neither exists
+ */
+function resolveSpeechRecognition() {
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+
 function start_recognition(recognitionId) {
+  const RecognitionConstructor = resolveSpeechRecognition();
+  if (RecognitionConstructor === null) {
+    document.getElementById("status-message").textContent =
+      "Speech recognition is not supported in this browser.";
+    started = false;
+    return;
+  }
   document.getElementById("startstop").innerHTML = "Stop recording";
-  const SpeechRecognition = webkitSpeechRecognition || SpeechRecognition;
-  const recognition = new SpeechRecognition();
+  const recognition = new RecognitionConstructor();
   recognition.continuous = true;
   recognition.interimResults = true;
   recognition.maxAlternatives = 3;

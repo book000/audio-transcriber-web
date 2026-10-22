@@ -52,6 +52,10 @@
 
 - `api.php`をどこかのサーバにおいてそこへのアドレスを`API URL`に設定して動作させることもできる。
 
+## Tests
+
+`node tests/speech-recognition-support.test.js`
+
 ## ライセンス / License
 
 このプロジェクトのライセンスは[MIT License](https://github.com/book000/audio-transcriber-web/blob/master/LICENSE)です。
