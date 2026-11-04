@@ -4,9 +4,10 @@ Browser-based speech-to-text transcriber: a vanilla-JS/jQuery static frontend
 (`static/`) using the Web Speech API, plus two interchangeable backends that persist
 transcripts — `main.py` (FastAPI) and `api.php` (PHP).
 
-There is no build system or linter in this repo, and the only test is a dependency-free
+There is no build system or JS linter in this repo, and the only test is a dependency-free
 Node script (`tests/speech-recognition-support.test.js`). Do not suggest running or
-adding `npm`/`pytest`/`eslint` commands that do not exist here.
+adding `npm`/`eslint` commands that do not exist here.
+Python CI (`.github/workflows/python-ci.yml`) runs `compileall`, `ruff check`, `ruff format --check` and `pytest` (no tests collected is OK) on `main.py`; there is no ruff config, so ruff defaults apply.
 
 ## Review priorities
 
@@ -31,7 +32,7 @@ adding `npm`/`pytest`/`eslint` commands that do not exist here.
 
 ## Do not flag
 
-- Absence of a JS/frontend package manager, JS lockfile, test suite, or CI config — this
-  is intentional. (Python deps are the exception: they use `pip` + `requirements.txt`.)
+- Absence of a JS/frontend package manager, JS lockfile, JS test suite, or JS CI — this
+  is intentional. (Python deps are the exception: they use `pip` + `requirements.txt`, and Python code has the CI above.)
 - Global/`var`-style vanilla JS and CDN-loaded jQuery in `static/` — consistent with the
   existing codebase; do not push toward a framework or module bundler.

@@ -14,9 +14,10 @@ needed if you want transcripts saved to disk.
 
 ## Running
 
-There is no build step, JS/frontend package manager, or linter in this
-repository. Python dependencies are the one exception: they are managed with `pip` +
+There is no build step or JS/frontend package manager in this repository.
+Python dependencies are the one exception: they are managed with `pip` +
 `requirements.txt` (see the Python backend below).
+The Python code is checked by `.github/workflows/python-ci.yml` (`python -m compileall`, `ruff check`, `ruff format --check`, `pytest`), using ruff's default settings (no ruff config in the repo).
 
 - Frontend only: open `static/index.html` (or the GitHub Pages URL). No server needed.
 - Python backend:
@@ -65,7 +66,8 @@ Browser support: Chrome 33+ / Edge 79+ (Web Speech API required).
 
 The only automated test is `node tests/speech-recognition-support.test.js` (plain Node,
 no dependencies; it checks how `static/script.js` picks the `SpeechRecognition` implementation
-and handles browsers without one). Verify everything else manually: run `python3 main.py`, open the page,
+and handles browsers without one). Python CI has no tests to run (`pytest` collecting none is OK); run `ruff check` and `ruff format --check` locally before pushing `main.py` changes.
+Verify everything else manually: run `python3 main.py`, open the page,
 grant microphone access, record speech, and confirm results render and that a
 `data/<YYYY-MM-DD HH-MM-SS>.{log,json}` pair (named from the session start time) is
 written with the expected content.
