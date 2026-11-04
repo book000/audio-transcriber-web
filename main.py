@@ -38,9 +38,8 @@ def main(data: DataModel):
         )
         for item in data.full
     )
-    timeStamp = datetime.fromtimestamp(data.startTime).strftime(  # noqa: DTZ006 -- filename intentionally uses server-local time (matches api.php date())
-        "%Y-%m-%d %H-%M-%S"
-    )
+    # filename intentionally uses server-local time (matches api.php date())
+    timeStamp = datetime.fromtimestamp(data.startTime).strftime("%Y-%m-%d %H-%M-%S")
 
     if not os.path.exists(os.path.dirname(os.path.abspath(__file__)) + "/data/"):
         os.mkdir(os.path.dirname(os.path.abspath(__file__)) + "/data/")
