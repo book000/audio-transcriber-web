@@ -18,13 +18,15 @@
 
 - `API URL`を入力することで、指定したアドレスに書き起こしたテキストを自動的に送信します。
 - `AutoStart`機能をオンにすることで、ページにアクセスした時やリロードした瞬間から録音を開始します。(beta)
-- `API URL`と`AutoStart`の設定内容は[localStorage](https://developer.mozilla.org/ja/docs/Web/API/Window/localStorage)に保存し、保持します。
+- `Display timestamp`をオンにすると、各結果に経過秒数の代わりに日時を表示します。
+- `API URL`、`AutoStart`、`Display timestamp`の設定内容は[localStorage](https://developer.mozilla.org/ja/docs/Web/API/Window/localStorage)に保存し、保持します。
+- 結果にホバーすると、認識の別候補とその差分を表示します。
 
 ## Requirements
 
 - Chrome 33+ / Edge 79+ ([Can I use SpeechRecognition?](https://caniuse.com/mdn-api_speechrecognition))
-- Python 3.6+
-- `requirements.txt`: fastapi, uvicorn
+- Python 3.6+ (Python バックエンドを使う場合のみ)
+- `requirements.txt`: fastapi, uvicorn, aiofiles
 
 ## Installation & Usage
 
@@ -34,7 +36,7 @@
 
 ### 2. Install packages from `requirements.txt`
 
-`pip3 install -r -U requirements.txt`
+`pip3 install -U -r requirements.txt`
 
 ### 3. Run `main.py --open-browser`
 
@@ -50,7 +52,9 @@
 
 ## Notes
 
-- `api.php`をどこかのサーバにおいてそこへのアドレスを`API URL`に設定して動作させることもできる。
+- 書き起こしは録音開始時刻 (サーバのローカル時刻) を名前にした `data/<YYYY-MM-DD HH-MM-SS>.log` と `.json` に保存されます。
+- `api.php`をどこかのサーバにおいてそこへのアドレスを`API URL`に設定して動作させることもできます。
+- バックエンドなしでもフロントエンドだけで動作します。`static/index.html` (または GitHub Pages) を開き、`API URL` は空のままにしてください。
 
 ## Tests
 
