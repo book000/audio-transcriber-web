@@ -1,9 +1,9 @@
-// 停止ボタンから停止できるよう、稼働中のインスタンスを保持する
+// Keeps the running instance so the stop button can stop it
 let currentRecognition = null;
 
 /**
- * ブラウザが提供する音声認識のコンストラクタを返す。
- * @returns {Function|null} 標準またはプレフィックス付きのコンストラクタ。どちらも無ければ null
+ * Returns the browser's speech recognition constructor.
+ * @returns {Function|null} The standard or prefixed constructor, or null if neither exists
  */
 function resolveSpeechRecognition() {
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
@@ -43,12 +43,12 @@ function start_recognition(recognitionId) {
   };
   recognition.onend = function (event) {
     console.log("onend", event);
-    // 停止して即再開した場合、旧インスタンスの遅延 onend で新しい録音の表示を消さない
+    // After a quick stop and restart, a late onend from the old instance must not clear the new recording's display
     if (currentRecognition === null || currentRecognition === recognition) {
       document.getElementById("status-circle").style.backgroundColor = "red";
       listening.remove();
     }
-    // 現在のインスタンスでなければ、停止済みまたは新しいインスタンスに置き換わっているため再起動しない
+    // Do not restart unless this is the current instance: it was stopped or already replaced by a new one
     if (started && currentRecognition === recognition) {
       start_recognition(recognitionId + 1);
     }
@@ -158,7 +158,7 @@ class MessagesManager {
     recognitionStartTimestamp (Unix epoch ms)
     timeStamp (ms since page time origin)
     transcript
-    percent
+    confidence
     alternatives
   */
   addMessage(resultId, options) {
@@ -166,9 +166,7 @@ class MessagesManager {
       return;
     }
 
-    // resultIdがmessagesに存在しない場合は新規作成
     if (this.messages.some((message) => message.resultId === resultId)) {
-      // 置き換え
       this.messages = this.messages.map((message) => {
         if (message.resultId === resultId) {
           const timeStamp = message.timeStamp || options.timeStamp;
@@ -184,7 +182,6 @@ class MessagesManager {
         return message;
       });
     } else {
-      // 新規追加
       this.messages.push({
         resultId: resultId,
         recognitionStartTimestamp: options.recognitionStartTimestamp,
@@ -305,7 +302,6 @@ class MessagesManager {
 
   formatDateTime(unixtime) {
     // yyyy-MM-dd hh:mm:ss
-    // ゼロ埋め
     const date = new Date(unixtime * 1000);
     const year = date.getFullYear();
     const month = ("0" + (date.getMonth() + 1).toString()).slice(-2);

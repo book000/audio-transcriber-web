@@ -2,7 +2,7 @@
 
 [日本語のREADMEはこちらから](README-ja.md)
 
-Using `SpeechRecognition` of browser, audio from the microphone automatically transcribe and written to file.
+Transcribes audio from the microphone using the browser's `SpeechRecognition` and writes the transcript to a file.
 
 - [GitHub Pages](https://book000.github.io/audio-transcriber-web/static/index.html)
 - For transcriptions from video and audio files: [book000/audio-transcriber-docker](https://github.com/book000/audio-transcriber-docker)
@@ -16,16 +16,17 @@ We do not provide any support.
 
 ## Feature
 
-- Input the `API URL`, can send the transcribed text to the specified address automatically.
-- With the `AutoStart` feature turned on, recording will start the moment you visit the page or reload. (beta)
-- The `API URL` and `AutoStart` settings are stored and maintained in [localStorage](https://developer.mozilla.org/en/docs/Web/API/Window/localStorage).
-- Shows alternatives to recognize sentences and diffs by hovering the results.
+- Enter an `API URL` to automatically send the transcribed text to that address.
+- With the `AutoStart` feature turned on, recording starts the moment you visit or reload the page. (beta)
+- With `Display timestamp` turned on, each result shows its date and time instead of the elapsed seconds.
+- The `API URL`, `AutoStart`, and `Display timestamp` settings are stored in [localStorage](https://developer.mozilla.org/en/docs/Web/API/Window/localStorage).
+- Hover over a result to see the recognition alternatives and their diffs.
 
 ## Requirements
 
 - Chrome 33+ / Edge 79+ ([Can I use SpeechRecognition?](https://caniuse.com/mdn-api_speechrecognition))
-- Python 3.6+
-- `requirements.txt`: fastapi, uvicorn
+- Python 3.6+ (only for the Python backend)
+- `requirements.txt`: fastapi, uvicorn, aiofiles
 
 ## Installation & Usage
 
@@ -51,7 +52,9 @@ If you turn on `AutoStart`, recording will start the moment you access the page.
 
 ## Notes
 
-- It also works if you put `api.php` on a server somewhere and set the address to it to an `API URL`.
+- Transcripts are saved as `data/<YYYY-MM-DD HH-MM-SS>.log` and `.json`, named after the recording start time (server-local time).
+- It also works if you put `api.php` on a server somewhere and set its address as the `API URL`.
+- The frontend alone works without a backend: open `static/index.html` (or the GitHub Pages URL) and leave `API URL` empty.
 
 ## Tests
 
