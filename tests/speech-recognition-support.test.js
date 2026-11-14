@@ -183,6 +183,63 @@ const cases = [
       assert.equal(typeof elements.startstop.onclick, "function");
     },
   ],
+  [
+    "POST sends every finalized transcript once in full, without duplicates",
+    () => {
+      const standard = createFakeRecognition();
+      const { sandbox, elements } = createSandbox({
+        globals: { SpeechRecognition: standard.Fake },
+      });
+      const posts = [];
+      sandbox.axios = {
+        post: (url, body) => {
+          posts.push({ url, body });
+          return Promise.resolve({ status: 200 });
+        },
+      };
+      const createStub = () => ({
+        classList: { add() {} },
+        dataset: {},
+        appendChild() {},
+      });
+      sandbox.document.createElement = createStub;
+      elements.listening.appendChild = () => {};
+      elements.messages.appendChild = () => {};
+      elements.api_url.value = "http://localhost:8080/api";
+      vm.runInContext(source, sandbox);
+      elements.startstop.onclick();
+
+      const result = (transcript) => ({
+        isFinal: true,
+        length: 1,
+        0: { transcript, confidence: 0.9 },
+      });
+      const first = result("hello");
+      const second = result("world");
+      const recognition = standard.instances[0];
+      recognition.onresult({ timeStamp: 1500, results: [first] });
+      recognition.onresult({ timeStamp: 3200, results: [first, second] });
+
+      const hello = { timeStamp: 1, transcript: "hello" };
+      const world = { timeStamp: 3, transcript: "world" };
+      assert.deepEqual(
+        JSON.parse(
+          JSON.stringify(
+            posts.map((post) => [
+              post.body.timeStamp,
+              post.body.transcript,
+              post.body.full,
+            ])
+          )
+        ),
+        [
+          [1, "hello", [hello]],
+          [3, "hello", [hello]],
+          [3, "world", [hello, world]],
+        ]
+      );
+    },
+  ],
 ];
 
 for (const [name, run] of cases) {
