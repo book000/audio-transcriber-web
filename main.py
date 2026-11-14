@@ -14,7 +14,6 @@ app = FastAPI()
 
 class DataModel(BaseModel):
     startTime: int
-    timeStamp: int
     transcript: str
     full: list
 
