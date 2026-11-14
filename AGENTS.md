@@ -32,7 +32,7 @@ To use the frontend alone, open `static/index.html`. To use the PHP backend inst
 - `static/style.css`, `static/manifest.json`: styling and PWA manifest.
 - `static/axios.min.js`, `static/diff.js` (jsdiff), `static/screenfull.min.js`: vendored third-party libraries. Do not hand-edit them; replace the whole file with a new upstream version.
 - `main.py`: FastAPI backend. `HEAD /api` is a health check (the frontend polls it every 10 seconds). `POST /api` takes `startTime`, `timeStamp`, `transcript`, `full`, derives the filename from `startTime` formatted as `YYYY-MM-DD HH-MM-SS` in server-local time, and overwrites `data/<timestamp>.log` (tab-separated `<timeStamp>s\t<transcript>` lines) and `data/<timestamp>.json` (the raw `full` array) on every request. It also serves `static/`.
-- `api.php`: standalone PHP equivalent of `POST /api` with the same filename derivation and output. It does not special-case `HEAD`.
+- `api.php`: standalone PHP equivalent of `POST /api` with the same filename derivation and output. `HEAD` returns 200 with an empty body, as the health check.
 - `data/`: runtime output, gitignored.
 
 ## Conventions
