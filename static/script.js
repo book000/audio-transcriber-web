@@ -93,7 +93,6 @@ class Listening {
       document.getElementById("messages")
     );
 
-    this.timeStamp = [];
     // Unix epoch milliseconds of the page time origin
     this.recognitionStartTimestamp = null;
   }
@@ -130,7 +129,11 @@ class Listening {
       alternatives: Array.from(results),
     });
 
-    sendResult(this.timeStamp, results[0].transcript);
+    sendResult(
+      Math.floor(timeStamp / 1000),
+      results[0].transcript,
+      this.messagesManager.getFullData()
+    );
   }
 
   remove() {
@@ -193,6 +196,13 @@ class MessagesManager {
     }
 
     this.updateMessages();
+  }
+
+  getFullData() {
+    return this.messages.map((message) => ({
+      timeStamp: Math.floor(message.timeStamp / 1000),
+      transcript: message.transcript,
+    }));
   }
 
   removeMessage(resultId) {
@@ -313,7 +323,7 @@ class MessagesManager {
   }
 }
 
-function sendResult(timeStamp, transcript) {
+function sendResult(timeStamp, transcript, fullData) {
   const apiurl = document.getElementById("api_url").value;
   if (apiurl == "") {
     return;
@@ -415,7 +425,6 @@ function isFullScreen() {
   );
 }
 
-fullData = [];
 started = false;
 listening = new Listening();
 onload();
