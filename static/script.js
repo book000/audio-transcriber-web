@@ -9,7 +9,18 @@ function resolveSpeechRecognition() {
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
 }
 
-function start_recognition(recognitionId) {
+let sessionCounter = 0;
+
+/**
+ * Creates a recording session record: one start until stop, uploaded under its own startTime.
+ * @returns {{ id: number, startTime: number }} startTime is Unix epoch seconds
+ */
+function newSession() {
+  sessionCounter += 1;
+  return { id: sessionCounter, startTime: new Date().getTime() / 1000 };
+}
+
+function start_recognition(recognitionId, session) {
   const RecognitionConstructor = resolveSpeechRecognition();
   if (RecognitionConstructor === null) {
     document.getElementById("status-message").textContent =
@@ -26,18 +37,11 @@ function start_recognition(recognitionId) {
   recognition.onresult = function (event) {
     console.log(event);
     for (var i = 0; i < event.results.length; ++i) {
+      const resultId = `${session.id}-${recognitionId}-${i}`;
       if (event.results[i].isFinal) {
-        listening.end(
-          `${recognitionId}-${i}`,
-          event.timeStamp,
-          event.results[i]
-        );
+        listening.end(session, resultId, event.timeStamp, event.results[i]);
       } else {
-        listening.runResults(
-          `${recognitionId}-${i}`,
-          event.timeStamp,
-          event.results[i]
-        );
+        listening.runResults(resultId, event.timeStamp, event.results[i]);
       }
     }
   };
@@ -50,7 +54,7 @@ function start_recognition(recognitionId) {
     }
     // Do not restart unless this is the current instance: it was stopped or already replaced by a new one
     if (started && currentRecognition === recognition) {
-      start_recognition(recognitionId + 1);
+      start_recognition(recognitionId + 1, session);
     }
   };
   recognition.onstart = function (event) {
@@ -118,10 +122,11 @@ class Listening {
     });
   }
 
-  end(resultId, timeStamp, results) {
+  end(session, resultId, timeStamp, results) {
     this.listeningMessagesManager.removeMessage(resultId);
 
     this.messagesManager.addMessage(resultId, {
+      sessionId: session.id,
       recognitionStartTimestamp: this.recognitionStartTimestamp,
       timeStamp: timeStamp,
       transcript: results[0].transcript,
@@ -130,9 +135,10 @@ class Listening {
     });
 
     sendResult(
+      session.startTime,
       Math.floor(timeStamp / 1000),
       results[0].transcript,
-      this.messagesManager.getFullData()
+      this.messagesManager.getFullData(session.id)
     );
   }
 
@@ -158,6 +164,7 @@ class MessagesManager {
 
   /*
   options:
+    sessionId (recording session; only finalized messages carry it)
     recognitionStartTimestamp (Unix epoch ms)
     timeStamp (ms since page time origin)
     transcript
@@ -175,6 +182,7 @@ class MessagesManager {
           const timeStamp = message.timeStamp || options.timeStamp;
           return {
             resultId: resultId,
+            sessionId: options.sessionId,
             recognitionStartTimestamp: options.recognitionStartTimestamp,
             timeStamp,
             transcript: options.transcript,
@@ -187,6 +195,7 @@ class MessagesManager {
     } else {
       this.messages.push({
         resultId: resultId,
+        sessionId: options.sessionId,
         recognitionStartTimestamp: options.recognitionStartTimestamp,
         timeStamp: options.timeStamp,
         transcript: options.transcript,
@@ -198,11 +207,13 @@ class MessagesManager {
     this.updateMessages();
   }
 
-  getFullData() {
-    return this.messages.map((message) => ({
-      timeStamp: Math.floor(message.timeStamp / 1000),
-      transcript: message.transcript,
-    }));
+  getFullData(sessionId) {
+    return this.messages
+      .filter((message) => message.sessionId === sessionId)
+      .map((message) => ({
+        timeStamp: Math.floor(message.timeStamp / 1000),
+        transcript: message.transcript,
+      }));
   }
 
   removeMessage(resultId) {
@@ -323,7 +334,7 @@ class MessagesManager {
   }
 }
 
-function sendResult(timeStamp, transcript, fullData) {
+function sendResult(startTime, timeStamp, transcript, fullData) {
   const apiurl = document.getElementById("api_url").value;
   if (apiurl == "") {
     return;
@@ -448,8 +459,7 @@ function onload() {
   }
   if (document.getElementById("auto-start").checked) {
     started = true;
-    startTime = new Date().getTime() / 1000;
-    start_recognition(0);
+    start_recognition(0, newSession());
   }
 
   setInterval(checkAPIURL, 10000);
@@ -479,8 +489,7 @@ document.getElementById("timestamp-display").onchange = function () {
 document.getElementById("startstop").onclick = function () {
   if (!started) {
     started = true;
-    startTime = new Date().getTime() / 1000;
-    start_recognition(0);
+    start_recognition(0, newSession());
   } else {
     document.getElementById("startstop").innerHTML = "Start recording";
     started = false;
