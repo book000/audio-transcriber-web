@@ -36,6 +36,8 @@ function createFakeRecognition() {
     start() {
       startCalls.push(instances.indexOf(this));
     }
+
+    stop() {}
   }
   return { Fake, instances, startCalls };
 }
@@ -105,6 +107,81 @@ function loadAndClick(options) {
   const loadError = catchError(() => vm.runInContext(source, sandbox));
   const clickError = catchError(() => elements.startstop.onclick());
   return { sandbox, elements, loadError, clickError };
+}
+
+/**
+ * Loads script.js with a recording POST stub and a controllable clock.
+ * @returns {{ elements: object, instances: object[], posts: object[], clock: { now: number }, sandbox: object }}
+ */
+function createRecordingHarness() {
+  const standard = createFakeRecognition();
+  const { sandbox, elements } = createSandbox({
+    globals: { SpeechRecognition: standard.Fake },
+  });
+  const posts = [];
+  sandbox.axios = {
+    post: (url, body) => {
+      posts.push({ url, body });
+      return Promise.resolve({ status: 200 });
+    },
+  };
+  const clock = { now: 1000000 };
+  sandbox.Date = class FakeDate {
+    constructor() {
+      this.ms = clock.now;
+    }
+
+    getTime() {
+      return this.ms;
+    }
+  };
+  sandbox.document.createElement = () => ({
+    classList: { add() {} },
+    dataset: {},
+    appendChild() {},
+  });
+  elements.listening.appendChild = () => {};
+  elements.messages.appendChild = () => {};
+  elements.api_url.value = "http://localhost:8080/api";
+  vm.runInContext(source, sandbox);
+  return { elements, instances: standard.instances, posts, clock, sandbox };
+}
+
+function finalResult(transcript) {
+  return { isFinal: true, length: 1, 0: { transcript, confidence: 0.9 } };
+}
+
+function summarizePosts(posts) {
+  return JSON.parse(
+    JSON.stringify(
+      posts.map(({ body }) => ({
+        startTime: body.startTime,
+        transcript: body.transcript,
+        full: body.full,
+      }))
+    )
+  );
+}
+
+function recordStopStart() {
+  const harness = createRecordingHarness();
+  const { elements, instances, clock } = harness;
+  const results = {
+    one: finalResult("one"),
+    two: finalResult("two"),
+    newOne: finalResult("new one"),
+  };
+  elements.startstop.onclick();
+  instances[0].onresult({ timeStamp: 1500, results: [results.one] });
+  instances[0].onresult({
+    timeStamp: 3200,
+    results: [results.one, results.two],
+  });
+  elements.startstop.onclick();
+  clock.now = 2000000;
+  elements.startstop.onclick();
+  instances[1].onresult({ timeStamp: 1500, results: [results.newOne] });
+  return { ...harness, results };
 }
 
 const cases = [
@@ -238,6 +315,80 @@ const cases = [
           [3, "world", [hello, world]],
         ]
       );
+    },
+  ],
+  [
+    "a second recording uploads only its own transcripts under its own startTime",
+    () => {
+      const { posts } = recordStopStart();
+      const summary = summarizePosts(posts);
+      assert.deepEqual(summary[summary.length - 1], {
+        startTime: 2000,
+        transcript: "new one",
+        full: [{ timeStamp: 1, transcript: "new one" }],
+      });
+      assert.deepEqual(
+        summary.filter((post) => post.startTime === 2000).length,
+        1
+      );
+    },
+  ],
+  [
+    "a late result from the old recording keeps the old startTime and full",
+    () => {
+      const { posts, instances, results } = recordStopStart();
+      const late = finalResult("late");
+      instances[0].onresult({
+        timeStamp: 5000,
+        results: [results.one, results.two, late],
+      });
+      const summary = summarizePosts(posts);
+      assert.deepEqual(summary[summary.length - 1], {
+        startTime: 1000,
+        transcript: "late",
+        full: [
+          { timeStamp: 1, transcript: "one" },
+          { timeStamp: 3, transcript: "two" },
+          { timeStamp: 5, transcript: "late" },
+        ],
+      });
+    },
+  ],
+  [
+    "an onend restart within one recording keeps the session and earlier results",
+    () => {
+      const { elements, instances, posts } = createRecordingHarness();
+      elements.startstop.onclick();
+      instances[0].onresult({ timeStamp: 1500, results: [finalResult("one")] });
+      instances[0].onend({});
+      instances[1].onresult({
+        timeStamp: 3200,
+        results: [finalResult("new one")],
+      });
+      const summary = summarizePosts(posts);
+      assert.deepEqual(summary[summary.length - 1], {
+        startTime: 1000,
+        transcript: "new one",
+        full: [
+          { timeStamp: 1, transcript: "one" },
+          { timeStamp: 3, transcript: "new one" },
+        ],
+      });
+    },
+  ],
+  [
+    "earlier recordings stay on the page with distinct result IDs",
+    () => {
+      const { sandbox } = recordStopStart();
+      const resultIds = sandbox.listening
+        .getMessagesManager()
+        .getMessages()
+        .map((message) => message.resultId);
+      assert.deepEqual(JSON.parse(JSON.stringify(resultIds)), [
+        "1-0-0",
+        "1-0-1",
+        "2-0-0",
+      ]);
     },
   ],
 ];
