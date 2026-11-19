@@ -4,9 +4,10 @@ See `AGENTS.md` for the project overview, commands, and conventions. Review in E
 
 ## Review priorities
 
-- **Backend parity**: `main.py` and `api.php` must accept the same request body (`startTime`, `timeStamp`, `transcript`, `full`) and write the same `data/<YYYY-MM-DD HH-MM-SS>.log` and `.json` files. Flag a change made to only one.
-- **File-writing safety**: the filename must come only from `startTime` run through date formatting. Flag raw request values in a path, path traversal, or unchecked writes.
-- **Input validation**: flag missing validation of request fields (`startTime`, `full`) before use.
+- **Backend parity**: `main.py` and `api.php` must accept the same request body (`startTime`, `revision`, `timeStamp`, `transcript`, `full`) and write the same session snapshots and `.log`/`.json` exports. Flag a change made to only one.
+- **File-writing safety**: the filename must come only from `startTime` run through date formatting. A per-session `.lock` must protect the revision check and writes across processes. `.snapshot.json` stores the highest accepted revision with its `full` array; older or duplicate requests must preserve it and repair exports from it. Each file replacement must be atomic; the files are not simultaneously visible as a group. Flag raw request values in a path, path traversal, or unchecked writes.
+- **Input validation**: flag missing validation of request fields (`startTime`, `full`) before use. `revision` must be a required positive integer no greater than `9007199254740991` (JavaScript's maximum safe integer).
+- **Upload ordering**: process recognition results from `event.resultIndex` without duplicate final-result uploads, and serialize snapshot POSTs. Regression tests must cover reordered backend requests; run both the Node suite and `python3 -m unittest discover -s tests -p 'test_*.py'` with the pinned backend requirements installed.
 - **Vendored libraries**: `static/axios.min.js`, `static/diff.js`, `static/screenfull.min.js` are third-party files. Do not review their internals; flag only hand edits.
 - **README sync**: flag setup or feature changes applied to only one of `README.md` and `README-ja.md`.
 - **Language**: flag non-English comments, docstrings, or documentation (except `README-ja.md`).

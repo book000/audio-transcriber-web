@@ -53,12 +53,19 @@
 ## Notes
 
 - 書き起こしは録音開始時刻 (サーバのローカル時刻) を名前にした `data/<YYYY-MM-DD HH-MM-SS>.log` と `.json` に保存されます。
+- アップロードは認識順に送信されます。両バックエンドでは、録音ごとに増加する正の整数 `revision` (最大 `9007199254740991`) が必要です。フロントエンドとバックエンドを同時に更新してください。古いリビジョンや重複するリビジョンは保存済みの音声認識結果を置き換えません。
+- セッションの `.snapshot.json` と `.lock` は書き起こしファイルと一緒に保持してください。スナップショットには受け付けたリビジョンと全文が保存され、出力が中断した場合は後続のリクエストで復元されます。各ファイルはセッションロック下で原子的に置き換えられますが、全ファイルが一括で原子的に公開されるわけではありません。
 - `api.php`をどこかのサーバにおいてそこへのアドレスを`API URL`に設定して動作させることもできます。
 - バックエンドなしでもフロントエンドだけで動作します。`static/index.html` (または GitHub Pages) を開き、`API URL` は空のままにしてください。
 
 ## Tests
 
-`node tests/speech-recognition-support.test.js`
+```bash
+node tests/speech-recognition-support.test.js
+python3 -m unittest discover -s tests -p 'test_*.py' -v
+```
+
+Python テストはインストール済みの `requirements.txt` の依存関係を使用し、一時ディレクトリ内で独立した HTTP バックエンドを起動します。スナップショットの順序逆転と並行送信、再起動後のリビジョン保持、出力の復元を検証します。同じテストを PHP に対して実行するには、テスト用の `api.php` のコピーをサーバで公開し、その URL を `TRANSCRIBER_TEST_URL` に、コピー先のディレクトリを `TRANSCRIBER_TEST_DIRECTORY` に設定してください。外部バックエンドの再起動テストはスキップされるため、PHP の再起動後の保持は別途確認してください。
 
 ## ライセンス / License
 
