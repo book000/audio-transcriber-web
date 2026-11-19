@@ -9,7 +9,6 @@ import tempfile
 import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -76,11 +75,7 @@ class SnapshotUploadsTest(unittest.TestCase):
         self.start_time = type(self).start_time + list(
             unittest.defaultTestLoader.getTestCaseNames(type(self))
         ).index(self._testMethodName)
-        filename = (
-            datetime.fromtimestamp(self.start_time, timezone.utc)
-            .astimezone()
-            .strftime("%Y-%m-%d %H-%M-%S")
-        )
+        filename = time.strftime("%Y-%m-%d %H-%M-%S", time.localtime(self.start_time))
         self.base = self.directory / "data" / filename
 
     def snapshot(self, revision):
@@ -186,11 +181,7 @@ class SnapshotUploadsTest(unittest.TestCase):
         self.assertEqual(self.post(other), 200)
         self.assert_saved(self.snapshot(2))
         self.start_time = other["startTime"]
-        filename = (
-            datetime.fromtimestamp(self.start_time, timezone.utc)
-            .astimezone()
-            .strftime("%Y-%m-%d %H-%M-%S")
-        )
+        filename = time.strftime("%Y-%m-%d %H-%M-%S", time.localtime(self.start_time))
         self.base = self.directory / "data" / filename
         self.assert_saved(other)
 

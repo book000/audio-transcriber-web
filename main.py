@@ -3,8 +3,8 @@ import os
 import sys
 import webbrowser
 from contextlib import contextmanager
-from datetime import datetime, timezone
 from tempfile import NamedTemporaryFile
+from time import localtime, strftime
 
 import uvicorn
 from fastapi import FastAPI, Response
@@ -82,11 +82,7 @@ def atomic_write(path, content):
 @app.post("/api")
 def main(data: DataModel):
     # Server-local time keeps the session filename consistent with api.php.
-    timestamp = (
-        datetime.fromtimestamp(data.startTime, timezone.utc)
-        .astimezone()
-        .strftime("%Y-%m-%d %H-%M-%S")
-    )
+    timestamp = strftime("%Y-%m-%d %H-%M-%S", localtime(data.startTime))
     directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
     os.makedirs(directory, exist_ok=True)
     base = os.path.join(directory, timestamp)
