@@ -172,15 +172,24 @@ function recordStopStart() {
     newOne: finalResult("new one"),
   };
   elements.startstop.onclick();
-  instances[0].onresult({ timeStamp: 1500, results: [results.one] });
   instances[0].onresult({
+    resultIndex: 0,
+    timeStamp: 1500,
+    results: [results.one],
+  });
+  instances[0].onresult({
+    resultIndex: 1,
     timeStamp: 3200,
     results: [results.one, results.two],
   });
   elements.startstop.onclick();
   clock.now = 2000000;
   elements.startstop.onclick();
-  instances[1].onresult({ timeStamp: 1500, results: [results.newOne] });
+  instances[1].onresult({
+    resultIndex: 0,
+    timeStamp: 1500,
+    results: [results.newOne],
+  });
   return { ...harness, results };
 }
 
@@ -262,7 +271,7 @@ const cases = [
   ],
   [
     "POST sends every finalized transcript once in full, without duplicates",
-    () => {
+    async () => {
       const standard = createFakeRecognition();
       const { sandbox, elements } = createSandbox({
         globals: { SpeechRecognition: standard.Fake },
@@ -294,9 +303,14 @@ const cases = [
       const first = result("hello");
       const second = result("world");
       const recognition = standard.instances[0];
-      recognition.onresult({ timeStamp: 1500, results: [first] });
-      recognition.onresult({ timeStamp: 3200, results: [first, second] });
+      recognition.onresult({ resultIndex: 0, timeStamp: 1500, results: [first] });
+      recognition.onresult({
+        resultIndex: 1,
+        timeStamp: 3200,
+        results: [first, second],
+      });
 
+      await vm.runInContext("uploadQueue", sandbox);
       const hello = { timeStamp: 1, transcript: "hello" };
       const world = { timeStamp: 3, transcript: "world" };
       assert.deepEqual(
@@ -311,7 +325,6 @@ const cases = [
         ),
         [
           [1, "hello", [hello]],
-          [3, "hello", [hello]],
           [3, "world", [hello, world]],
         ]
       );
@@ -319,9 +332,11 @@ const cases = [
   ],
   [
     "a second recording uploads only its own transcripts under its own startTime",
-    () => {
-      const { posts } = recordStopStart();
+    async () => {
+      const { posts, sandbox } = recordStopStart();
+      await vm.runInContext("uploadQueue", sandbox);
       const summary = summarizePosts(posts);
+      assert.equal(posts[posts.length - 1].body.revision, 1);
       assert.deepEqual(summary[summary.length - 1], {
         startTime: 2000,
         transcript: "new one",
@@ -335,13 +350,15 @@ const cases = [
   ],
   [
     "a late result from the old recording keeps the old startTime and full",
-    () => {
-      const { posts, instances, results } = recordStopStart();
+    async () => {
+      const { posts, instances, results, sandbox } = recordStopStart();
       const late = finalResult("late");
       instances[0].onresult({
+        resultIndex: 2,
         timeStamp: 5000,
         results: [results.one, results.two, late],
       });
+      await vm.runInContext("uploadQueue", sandbox);
       const summary = summarizePosts(posts);
       assert.deepEqual(summary[summary.length - 1], {
         startTime: 1000,
@@ -356,15 +373,21 @@ const cases = [
   ],
   [
     "an onend restart within one recording keeps the session and earlier results",
-    () => {
-      const { elements, instances, posts } = createRecordingHarness();
+    async () => {
+      const { elements, instances, posts, sandbox } = createRecordingHarness();
       elements.startstop.onclick();
-      instances[0].onresult({ timeStamp: 1500, results: [finalResult("one")] });
+      instances[0].onresult({
+        resultIndex: 0,
+        timeStamp: 1500,
+        results: [finalResult("one")],
+      });
       instances[0].onend({});
       instances[1].onresult({
+        resultIndex: 0,
         timeStamp: 3200,
         results: [finalResult("new one")],
       });
+      await vm.runInContext("uploadQueue", sandbox);
       const summary = summarizePosts(posts);
       assert.deepEqual(summary[summary.length - 1], {
         startTime: 1000,
@@ -374,6 +397,81 @@ const cases = [
           { timeStamp: 3, transcript: "new one" },
         ],
       });
+    },
+  ],
+  [
+    "interim updates do not re-upload finals and a batch uploads each new final once",
+    async () => {
+      const { elements, instances, posts, sandbox } = createRecordingHarness();
+      elements.startstop.onclick();
+      const recognition = instances[0];
+      const first = finalResult("one");
+      const interim = { ...finalResult("unfinished"), isFinal: false };
+      recognition.onresult({
+        resultIndex: 0,
+        timeStamp: 1000,
+        results: [first, interim],
+      });
+      recognition.onresult({
+        resultIndex: 1,
+        timeStamp: 2000,
+        results: [first, interim],
+      });
+      await vm.runInContext("uploadQueue", sandbox);
+      assert.equal(posts.length, 1);
+      assert.equal(
+        sandbox.listening.getListeningMessagesManager().getMessages().length,
+        1
+      );
+      recognition.onresult({
+        resultIndex: 1,
+        timeStamp: 3000,
+        results: [first, finalResult("two"), finalResult("three")],
+      });
+      await vm.runInContext("uploadQueue", sandbox);
+      assert.deepEqual(posts.map(({ body }) => body.revision), [1, 2, 3]);
+      assert.deepEqual(
+        posts.map(({ body }) => body.transcript),
+        ["one", "two", "three"]
+      );
+      assert.equal(posts[2].body.full.length, 3);
+      assert.equal(
+        sandbox.listening.getListeningMessagesManager().getMessages().length,
+        0
+      );
+    },
+  ],
+  [
+    "uploads wait for the preceding request and continue after rejection",
+    async () => {
+      const { elements, instances, posts, sandbox } = createRecordingHarness();
+      let rejectFirst;
+      sandbox.axios.post = (url, body) => {
+        posts.push({ url, body });
+        if (posts.length === 1) {
+          return new Promise((resolve, reject) => {
+            rejectFirst = reject;
+          });
+        }
+        return Promise.resolve({ status: 200 });
+      };
+      elements.startstop.onclick();
+      const first = finalResult("one");
+      instances[0].onresult({ resultIndex: 0, timeStamp: 1500, results: [first] });
+      instances[0].onresult({
+        resultIndex: 1,
+        timeStamp: 3200,
+        results: [first, finalResult("two")],
+      });
+      await Promise.resolve();
+      assert.equal(posts.length, 1);
+      assert.equal(posts[0].body.revision, 1);
+      rejectFirst(new Error("Simulated upload failure"));
+      await vm.runInContext("uploadQueue", sandbox);
+      assert.equal(posts.length, 2);
+      assert.equal(posts[1].body.revision, 2);
+      assert.equal(posts[0].body.full.length, 1);
+      assert.equal(posts[1].body.full.length, 2);
     },
   ],
   [
@@ -393,12 +491,16 @@ const cases = [
   ],
 ];
 
-for (const [name, run] of cases) {
-  const error = catchError(run);
-  if (error === null) {
-    console.log(`ok - ${name}`);
-  } else {
-    console.log(`not ok - ${name}: ${error.message}`);
-    process.exitCode = 1;
+async function main() {
+  for (const [name, run] of cases) {
+    try {
+      await run();
+      console.log(`ok - ${name}`);
+    } catch (error) {
+      console.log(`not ok - ${name}: ${error.stack}`);
+      process.exitCode = 1;
+    }
   }
 }
+
+main();

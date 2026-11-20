@@ -53,12 +53,19 @@ If you turn on `AutoStart`, recording will start the moment you access the page.
 ## Notes
 
 - Transcripts are saved as `data/<YYYY-MM-DD HH-MM-SS>.log` and `.json`, named after the recording start time (server-local time).
+- Uploads are queued in recognition order. Both backends require a positive integer `revision` (at most `9007199254740991`) that increases within each recording; upgrade the frontend and backend together. Older or duplicate revisions cannot replace saved speech.
+- Keep the session `.snapshot.json` and `.lock` sidecars alongside the transcript exports. The snapshot stores the accepted revision and full transcript; a later request repairs incomplete exports from it. Each file is replaced atomically under the session lock, but the files are not published as one atomic group.
 - It also works if you put `api.php` on a server somewhere and set its address as the `API URL`.
 - The frontend alone works without a backend: open `static/index.html` (or the GitHub Pages URL) and leave `API URL` empty.
 
 ## Tests
 
-`node tests/speech-recognition-support.test.js`
+```bash
+node tests/speech-recognition-support.test.js
+python3 -m unittest discover -s tests -p 'test_*.py' -v
+```
+
+The Python tests use the installed `requirements.txt` dependencies and start an isolated HTTP backend in a temporary directory. They cover reordered and concurrent snapshots, revision persistence across restarts, and export recovery. To run the same cases against PHP, serve a disposable copy of `api.php`, then set `TRANSCRIBER_TEST_URL` to its URL and `TRANSCRIBER_TEST_DIRECTORY` to that copy's directory. The external-backend restart case is skipped; verify PHP restart persistence separately.
 
 ## License
 

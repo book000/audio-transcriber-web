@@ -13,11 +13,11 @@ let sessionCounter = 0;
 
 /**
  * Creates a recording session record: one start until stop, uploaded under its own startTime.
- * @returns {{ id: number, startTime: number }} startTime is Unix epoch seconds
+ * @returns {{ id: number, startTime: number, revision: number }} startTime is Unix epoch seconds
  */
 function newSession() {
   sessionCounter += 1;
-  return { id: sessionCounter, startTime: new Date().getTime() / 1000 };
+  return { id: sessionCounter, startTime: new Date().getTime() / 1000, revision: 0 };
 }
 
 function start_recognition(recognitionId, session) {
@@ -36,7 +36,7 @@ function start_recognition(recognitionId, session) {
   recognition.maxAlternatives = 3;
   recognition.onresult = function (event) {
     console.log(event);
-    for (var i = 0; i < event.results.length; ++i) {
+    for (var i = event.resultIndex; i < event.results.length; ++i) {
       const resultId = `${session.id}-${recognitionId}-${i}`;
       if (event.results[i].isFinal) {
         listening.end(session, resultId, event.timeStamp, event.results[i]);
@@ -135,7 +135,7 @@ class Listening {
     });
 
     sendResult(
-      session.startTime,
+      session,
       Math.floor(timeStamp / 1000),
       results[0].transcript,
       this.messagesManager.getFullData(session.id)
@@ -334,18 +334,22 @@ class MessagesManager {
   }
 }
 
-function sendResult(startTime, timeStamp, transcript, fullData) {
+let uploadQueue = Promise.resolve();
+
+function sendResult(session, timeStamp, transcript, fullData) {
   const apiurl = document.getElementById("api_url").value;
   if (apiurl == "") {
     return;
   }
-  axios
-    .post(apiurl, {
-      startTime: startTime,
-      timeStamp: timeStamp,
-      transcript: transcript,
-      full: fullData,
-    })
+  const snapshot = {
+    startTime: session.startTime,
+    revision: ++session.revision,
+    timeStamp: timeStamp,
+    transcript: transcript,
+    full: fullData,
+  };
+  uploadQueue = uploadQueue
+    .then(() => axios.post(apiurl, snapshot))
     .then(function (response) {
       if (response.status != 200) {
         console.error(response);

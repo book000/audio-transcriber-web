@@ -2,20 +2,34 @@ import json
 import os
 import sys
 import webbrowser
-from datetime import datetime
+from contextlib import contextmanager
+from tempfile import NamedTemporaryFile
+from time import localtime, strftime
 
 import uvicorn
 from fastapi import FastAPI, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, conint, validator
 
 app = FastAPI()
 
 
 class DataModel(BaseModel):
     startTime: int
+    revision: conint(strict=True, gt=0, le=9007199254740991)
     transcript: str
     full: list
+
+    @validator("full")
+    def validate_full(cls, items):
+        for item in items:
+            if not isinstance(item, dict):
+                raise TypeError("Invalid transcript entry")
+            timestamp = item.get("timeStamp")
+            transcript = item.get("transcript")
+            if type(timestamp) is not int or not isinstance(transcript, str):
+                raise ValueError("Invalid transcript entry")
+        return items
 
 
 @app.get("/")
@@ -29,40 +43,78 @@ def head_api():
     return Response(content="Successful")
 
 
+@contextmanager
+def session_lock(path):
+    with open(path, "a+b") as lock:
+        if os.name == "nt":
+            import msvcrt
+
+            lock.seek(0)
+            msvcrt.locking(lock.fileno(), msvcrt.LK_LOCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            if os.name == "nt":
+                lock.seek(0)
+                msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(lock, fcntl.LOCK_UN)
+
+
+def atomic_write(path, content):
+    temporary = None
+    try:
+        with NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=os.path.dirname(path), delete=False
+        ) as output:
+            temporary = output.name
+            output.write(content)
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None and os.path.exists(temporary):
+            os.unlink(temporary)
+
+
 @app.post("/api")
 def main(data: DataModel):
-    fullText = "\n".join(
-        "{timeStamp}s\t{transcript}".format(
-            timeStamp=item.get("timeStamp"), transcript=item.get("transcript")
+    # Server-local time keeps the session filename consistent with api.php.
+    timestamp = strftime("%Y-%m-%d %H-%M-%S", localtime(data.startTime))
+    directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+    os.makedirs(directory, exist_ok=True)
+    base = os.path.join(directory, timestamp)
+    with session_lock(base + ".lock"):
+        snapshot_path = base + ".snapshot.json"
+        snapshot = {"revision": data.revision, "full": data.full}
+        if os.path.exists(snapshot_path):
+            with open(snapshot_path, encoding="utf-8") as saved:
+                previous = json.load(saved)
+            if previous["revision"] >= data.revision:
+                snapshot = previous
+        full_text = "\n".join(
+            "{timeStamp}s\t{transcript}".format(**item) for item in snapshot["full"]
         )
-        for item in data.full
-    )
-    # filename intentionally uses server-local time (matches api.php date())
-    timeStamp = datetime.fromtimestamp(data.startTime).strftime("%Y-%m-%d %H-%M-%S")
-
-    if not os.path.exists(os.path.dirname(os.path.abspath(__file__)) + "/data/"):
-        os.mkdir(os.path.dirname(os.path.abspath(__file__)) + "/data/")
-
-    with open(
-        os.path.dirname(os.path.abspath(__file__)) + "/data/" + timeStamp + ".log", "w"
-    ) as f:
-        f.write(fullText)
-
-    with open(
-        os.path.dirname(os.path.abspath(__file__)) + "/data/" + timeStamp + ".json", "w"
-    ) as f:
-        f.write(json.dumps(data.full))
+        # Persist the revision with its data first so retries can repair incomplete exports.
+        atomic_write(snapshot_path, json.dumps(snapshot))
+        atomic_write(base + ".log", full_text)
+        atomic_write(base + ".json", json.dumps(snapshot["full"]))
 
 
 app.mount("/", StaticFiles(directory="static"), name="static")
 
 
-if len(sys.argv) >= 2 and sys.argv[1] == "--open-browser":
-    if os.path.exists(r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"):
-        webbrowser.get(
-            r'"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" %s &'
-        ).open("http://localhost:8080/")
-    else:
-        webbrowser.open("http://localhost:8080")
+if __name__ == "__main__":
+    if len(sys.argv) >= 2 and sys.argv[1] == "--open-browser":
+        if os.path.exists(
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
+        ):
+            webbrowser.get(
+                r'"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" %s &'
+            ).open("http://localhost:8080/")
+        else:
+            webbrowser.open("http://localhost:8080")
 
-uvicorn.run(app, host="0.0.0.0", port=8080)
+    uvicorn.run(app, host="0.0.0.0", port=8080)
