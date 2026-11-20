@@ -52,10 +52,13 @@ If you turn on `AutoStart`, recording will start the moment you access the page.
 
 ## Notes
 
-- Transcripts are saved as `data/<YYYY-MM-DD HH-MM-SS>.log` and `.json`, named after the recording start time (server-local time).
+- Transcripts are saved as `<YYYY-MM-DD HH-MM-SS>.log` and `.json`, named after the recording start time (server-local time). `main.py` writes them to `data/`; `api.php` writes them to the directory named by the `TRANSCRIPT_DATA_DIR` environment variable.
 - Uploads are queued in recognition order. Both backends require a positive integer `revision` (at most `9007199254740991`) that increases within each recording; upgrade the frontend and backend together. Older or duplicate revisions cannot replace saved speech.
 - Keep the session `.snapshot.json` and `.lock` sidecars alongside the transcript exports. The snapshot stores the accepted revision and full transcript; a later request repairs incomplete exports from it. Each file is replaced atomically under the session lock, but the files are not published as one atomic group.
 - It also works if you put `api.php` on a server somewhere and set its address as the `API URL`.
+  - Set `TRANSCRIPT_DATA_DIR` for PHP to an absolute path **outside the web server's document root** whose parent directory exists (only the last component is created). Anything inside the document root can be downloaded by anyone who guesses a recording timestamp. Until it is set, `api.php` answers HTTP 500 to `POST` and `HEAD` and writes nothing.
+  - For PHP-FPM, add `env[TRANSCRIPT_DATA_DIR] = /var/lib/audio-transcriber` to the pool configuration. For nginx with FastCGI, add `fastcgi_param TRANSCRIPT_DATA_DIR /var/lib/audio-transcriber;`. The PHP user must be able to write there.
+  - Upgrading from a version that wrote to `<document root>/data/`: set the variable, then move the old files out of the document root by hand.
 - The frontend alone works without a backend: open `static/index.html` (or the GitHub Pages URL) and leave `API URL` empty.
 
 ## Tests
@@ -65,7 +68,7 @@ node tests/speech-recognition-support.test.js
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
-The Python tests use the installed `requirements.txt` dependencies and start an isolated HTTP backend in a temporary directory. They cover reordered and concurrent snapshots, revision persistence across restarts, and export recovery. To run the same cases against PHP, serve a disposable copy of `api.php`, then set `TRANSCRIBER_TEST_URL` to its URL and `TRANSCRIBER_TEST_DIRECTORY` to that copy's directory. The external-backend restart case is skipped; verify PHP restart persistence separately.
+The Python tests use the installed `requirements.txt` dependencies and start an isolated HTTP backend in a temporary directory. They cover reordered and concurrent snapshots, revision persistence across restarts, and export recovery. To run the same cases against PHP, serve a disposable copy of `api.php` with `TRANSCRIPT_DATA_DIR` set to `<directory>/data`, then set `TRANSCRIBER_TEST_URL` to its URL and `TRANSCRIBER_TEST_DIRECTORY` to `<directory>`. The PHP server must use the same time zone as the test runner, because file names use server-local time. The external-backend restart case is skipped; verify PHP restart persistence separately.
 
 ## License
 

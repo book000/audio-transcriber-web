@@ -1,4 +1,13 @@
 <?php
+$directory = rtrim((string) getenv("TRANSCRIPT_DATA_DIR"), "/");
+if ($directory === "") {
+    http_response_code(500);
+    if ($_SERVER["REQUEST_METHOD"] !== "HEAD") {
+        echo json_encode(["status" => false, "message" => "TRANSCRIPT_DATA_DIR is not set"]);
+    }
+    exit;
+}
+
 if ($_SERVER["REQUEST_METHOD"] === "HEAD") {
     exit;
 }
@@ -41,7 +50,6 @@ foreach ($json["full"] as $item) {
     }
 }
 
-$directory = __DIR__ . "/data";
 $lock = false;
 try {
     if (!is_dir($directory) && !@mkdir($directory) && !is_dir($directory)) {
