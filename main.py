@@ -5,28 +5,35 @@ import webbrowser
 from contextlib import contextmanager
 from tempfile import NamedTemporaryFile
 from time import localtime, strftime
+from typing import Annotated
 
 import uvicorn
 from fastapi import FastAPI, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, conint, validator
+from pydantic import BaseModel, Field, field_validator
 
 app = FastAPI()
 
 
 class DataModel(BaseModel):
     startTime: int
-    revision: conint(strict=True, gt=0, le=9007199254740991)
+    revision: Annotated[int, Field(strict=True, gt=0, le=9007199254740991)]
     transcript: str
     full: list
 
-    @validator("full")
+    @field_validator("startTime", mode="before")
+    @classmethod
+    def truncate_start_time(cls, value):
+        # The frontend sends fractional epoch seconds.
+        return int(value) if type(value) is float else value
+
+    @field_validator("full")
+    @classmethod
     def validate_full(cls, items):
         for item in items:
-            if not isinstance(item, dict):
-                raise TypeError("Invalid transcript entry")
-            timestamp = item.get("timeStamp")
-            transcript = item.get("transcript")
+            entry = item if isinstance(item, dict) else {}
+            timestamp = entry.get("timeStamp")
+            transcript = entry.get("transcript")
             if type(timestamp) is not int or not isinstance(transcript, str):
                 raise ValueError("Invalid transcript entry")
         return items

@@ -25,8 +25,8 @@
 ## Requirements
 
 - Chrome 33+ / Edge 79+ ([Can I use SpeechRecognition?](https://caniuse.com/mdn-api_speechrecognition))
-- Python 3.6+ (Python バックエンドを使う場合のみ)
-- `requirements.txt`: fastapi, uvicorn, aiofiles
+- Python 3.11+ (Python バックエンドを使う場合のみ)
+- `requirements.txt`: fastapi, uvicorn
 
 ## Installation & Usage
 
