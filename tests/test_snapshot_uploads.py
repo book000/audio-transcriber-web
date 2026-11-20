@@ -1,3 +1,4 @@
+import http.client
 import json
 import os
 import secrets
@@ -11,6 +12,7 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 
@@ -173,6 +175,36 @@ class SnapshotUploadsTest(unittest.TestCase):
             invalid["full"] = [entry]
             self.assertIn(self.post(invalid), (400, 422))
         self.assert_saved(self.snapshot(2))
+
+    def test_fractional_start_time_is_truncated(self):
+        snapshot = self.snapshot(2)
+        snapshot["startTime"] = self.start_time + 0.75
+        self.assertEqual(self.post(snapshot), 200)
+        self.assert_saved(snapshot)
+
+    def get(self, path):
+        parsed = urlsplit(self.url)
+        connection = http.client.HTTPConnection(
+            parsed.hostname, parsed.port, timeout=10
+        )
+        try:
+            connection.request("GET", path)
+            response = connection.getresponse()
+            return response.status, response.read()
+        finally:
+            connection.close()
+
+    def test_static_files_are_served_and_sibling_traversal_is_rejected(self):
+        if os.environ.get("TRANSCRIBER_TEST_URL"):
+            self.skipTest("Depends on the spawned backend's directory layout")
+        secret = b"sibling secret"
+        (self.directory / "static_private.txt").write_bytes(secret)
+        status, body = self.get("/style.css")
+        self.assertEqual(status, 200)
+        self.assertEqual(body, (self.directory / "static" / "style.css").read_bytes())
+        status, body = self.get("/../static_private.txt")
+        self.assertNotEqual(status, 200)
+        self.assertNotEqual(body, secret)
 
     def test_recording_sessions_have_independent_revisions(self):
         self.assertEqual(self.post(self.snapshot(2)), 200)
