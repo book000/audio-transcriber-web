@@ -24,7 +24,7 @@ python3 -m unittest discover -s tests -p 'test_*.py'  # HTTP backend regression 
 ```
 
 There is no JS package manager, build step, or JS linter. `.github/workflows/python-ci.yml` (reusable workflow from `book000/templates`) runs Python checks (`compileall`, `ruff check`, `ruff format --check`, `pytest`) with ruff's defaults; pytest also discovers the backend regression tests. Run `ruff check` and `ruff format --check` before pushing Python changes.
-To use the frontend alone, open `static/index.html`. To use the PHP backend instead, put `api.php` on any PHP server and point `API URL` at it.
+To use the frontend alone, open `static/index.html`. To use the PHP backend instead, put `api.php` on any PHP server and point `API URL` at it. `api.php` requires the `TRANSCRIPT_DATA_DIR` environment variable set to an absolute path outside the document root whose parent directory exists (see `README.md`).
 
 ## Structure
 
@@ -33,13 +33,13 @@ To use the frontend alone, open `static/index.html`. To use the PHP backend inst
 - `static/style.css`, `static/manifest.json`: styling and PWA manifest.
 - `static/axios.min.js`, `static/diff.js` (jsdiff), `static/screenfull.min.js`: vendored third-party libraries. Do not hand-edit them; replace the whole file with a new upstream version.
 - `main.py`: FastAPI backend. `HEAD /api` is a health check (the frontend polls it every 10 seconds). `POST /api` takes `startTime`, `revision`, `timeStamp`, `transcript`, and `full`; `revision` is a required positive integer no greater than `9007199254740991` (JavaScript's maximum safe integer). It derives the filename from `startTime` formatted as `YYYY-MM-DD HH-MM-SS` in server-local time. It also serves `static/`.
-- `api.php`: standalone PHP equivalent of `POST /api` with the same filename derivation and output. `HEAD` returns 200 with an empty body, as the health check.
-- `data/`: runtime output, gitignored.
+- `api.php`: standalone PHP equivalent of `POST /api` with the same filename derivation and output. `HEAD` returns 200 with an empty body as the health check when `TRANSCRIPT_DATA_DIR` is configured and 500 when it is unset; it writes the same output files into that directory instead of `data/`.
+- `data/`: the Python backend's runtime output, gitignored; `api.php` uses `TRANSCRIPT_DATA_DIR` instead.
 
 ## Conventions
 
 - Keep `main.py` and `api.php` in parity: when one changes its request shape or output format, change the other to match.
-- Both backends write to `data/`. The filename must keep coming only from `startTime` run through date formatting; never put raw request values into a path.
+- `main.py` writes to `data/` and `api.php` writes to `TRANSCRIPT_DATA_DIR`, which must stay outside the web-served directory. The filename must keep coming only from `startTime` run through date formatting; never put raw request values into a path.
 - A per-session `.lock` coordinates requests across processes. The canonical `.snapshot.json` stores the highest accepted `revision` with its `full` array. Older or duplicate revisions must not replace this snapshot. Under the same lock, requests atomically replace `.log` (tab-separated `<timeStamp>s\t<transcript>` lines) and `.json` (the raw `full` array), repairing incomplete exports from the canonical snapshot on later requests. Each file replacement is atomic; simultaneous visibility of all files is not guaranteed.
 - Update `README.md` and `README-ja.md` together.
 - Pin dependency versions in `requirements.txt`.
