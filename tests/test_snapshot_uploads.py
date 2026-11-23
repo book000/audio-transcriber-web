@@ -17,34 +17,63 @@ from urllib.request import Request, urlopen
 
 
 class SnapshotUploadsTest(unittest.TestCase):
+    backend = "python"
+
     @classmethod
     def setUpClass(cls):
+        if cls.backend == "php":
+            if os.environ.get("TRANSCRIBER_TEST_URL"):
+                raise unittest.SkipTest("Using the externally managed backend instead")
+            if not shutil.which("php"):
+                raise unittest.SkipTest("PHP executable is not available")
         cls.server = None
         cls.start_time = 1600000000 + secrets.randbelow(100000000)
         cls.temporary = tempfile.TemporaryDirectory()
         cls.addClassCleanup(cls.temporary.cleanup)
         cls.directory = Path(cls.temporary.name)
         cls.url = os.environ.get("TRANSCRIBER_TEST_URL")
+        cls.invalid_statuses = (400, 422)
         if cls.url:
             cls.directory = Path(os.environ["TRANSCRIBER_TEST_DIRECTORY"])
         else:
             root = Path(__file__).resolve().parents[1]
-            shutil.copy(root / "main.py", cls.directory)
-            shutil.copytree(root / "static", cls.directory / "static")
+            cls.environment = os.environ.copy()
+            cls.environment["TZ"] = "UTC"
             with socket.socket() as sock:
                 sock.bind(("127.0.0.1", 0))
                 port = sock.getsockname()[1]
-            cls.url = f"http://127.0.0.1:{port}/api"
-            cls.command = [
-                sys.executable,
-                "-m",
-                "uvicorn",
-                "main:app",
-                "--host",
-                "127.0.0.1",
-                "--port",
-                str(port),
-            ]
+            if cls.backend == "php":
+                public = cls.directory / "public"
+                public.mkdir()
+                shutil.copy(root / "api.php", public)
+                cls.environment["TRANSCRIPT_DATA_DIR"] = str(cls.directory / "data")
+                cls.environment.pop("PHP_CLI_SERVER_WORKERS", None)
+                cls.url = f"http://127.0.0.1:{port}/api.php"
+                cls.invalid_statuses = (400,)
+                cls.command = [
+                    "php",
+                    "-d",
+                    "date.timezone=UTC",
+                    "-S",
+                    f"127.0.0.1:{port}",
+                    "-t",
+                    str(public),
+                ]
+            else:
+                shutil.copy(root / "main.py", cls.directory)
+                shutil.copytree(root / "static", cls.directory / "static")
+                cls.url = f"http://127.0.0.1:{port}/api"
+                cls.invalid_statuses = (422,)
+                cls.command = [
+                    sys.executable,
+                    "-m",
+                    "uvicorn",
+                    "main:app",
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    str(port),
+                ]
             cls.addClassCleanup(cls.stop_server)
             cls.start_server()
 
@@ -53,6 +82,7 @@ class SnapshotUploadsTest(unittest.TestCase):
         cls.server = subprocess.Popen(
             cls.command,
             cwd=cls.directory,
+            env=cls.environment,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -77,8 +107,14 @@ class SnapshotUploadsTest(unittest.TestCase):
         self.start_time = type(self).start_time + list(
             unittest.defaultTestLoader.getTestCaseNames(type(self))
         ).index(self._testMethodName)
-        filename = time.strftime("%Y-%m-%d %H-%M-%S", time.localtime(self.start_time))
+        filename = self.session_filename(self.start_time)
         self.base = self.directory / "data" / filename
+
+    def session_filename(self, start_time):
+        clock = (
+            time.localtime if os.environ.get("TRANSCRIBER_TEST_URL") else time.gmtime
+        )
+        return time.strftime("%Y-%m-%d %H-%M-%S", clock(int(start_time)))
 
     def snapshot(self, revision):
         return {
@@ -132,6 +168,31 @@ class SnapshotUploadsTest(unittest.TestCase):
         self.assertEqual(self.post(duplicate), 200)
         self.assert_saved(latest)
 
+    def test_health_check_has_no_body_or_storage_side_effects(self):
+        before = set(self.directory.rglob("*"))
+        with urlopen(Request(self.url, method="HEAD"), timeout=10) as response:
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.read(), b"")
+        self.assertEqual(set(self.directory.rglob("*")), before)
+
+    def test_frontend_payload_preserves_unicode_and_uses_full_for_exports(self):
+        snapshot = self.snapshot(1)
+        snapshot["startTime"] += 0.75
+        snapshot["timeStamp"] = 3
+        snapshot["transcript"] = "latest result"
+        snapshot["full"] = [
+            {"timeStamp": 0, "transcript": "Hello\tworld\nこんにちは 🎤"},
+            {"timeStamp": 3, "transcript": "latest result"},
+        ]
+        self.assertEqual(self.post(snapshot), 200)
+        self.assert_saved(snapshot)
+
+    def test_invalid_first_request_does_not_create_session_files(self):
+        snapshot = self.snapshot(1)
+        snapshot["full"] = [{"timeStamp": -1, "transcript": "invalid"}]
+        self.assertIn(self.post(snapshot), self.invalid_statuses)
+        self.assertEqual(list(self.base.parent.glob(self.base.name + ".*")), [])
+
     def test_concurrent_requests_keep_highest_revision(self):
         revisions = [8, 1, 7, 2, 6, 3, 5, 4]
         with ThreadPoolExecutor(max_workers=8) as pool:
@@ -165,10 +226,10 @@ class SnapshotUploadsTest(unittest.TestCase):
             with self.subTest(revision=revision):
                 invalid = self.snapshot(1)
                 invalid["revision"] = revision
-                self.assertIn(self.post(invalid), (400, 422))
+                self.assertIn(self.post(invalid), self.invalid_statuses)
         missing = self.snapshot(1)
         del missing["revision"]
-        self.assertIn(self.post(missing), (400, 422))
+        self.assertIn(self.post(missing), self.invalid_statuses)
         self.assert_saved(self.snapshot(2))
 
     def test_invalid_transcript_entries_leave_saved_snapshot_unchanged(self):
@@ -176,7 +237,7 @@ class SnapshotUploadsTest(unittest.TestCase):
         for entry in (None, {}, "text", {"timeStamp": 1, "transcript": None}):
             invalid = self.snapshot(3)
             invalid["full"] = [entry]
-            self.assertIn(self.post(invalid), (400, 422))
+            self.assertIn(self.post(invalid), self.invalid_statuses)
         self.assert_saved(self.snapshot(2))
 
     def test_invalid_json_shapes_leave_saved_snapshot_unchanged(self):
@@ -193,12 +254,12 @@ class SnapshotUploadsTest(unittest.TestCase):
             b'{"transcript":"\\ud800"}',
         ):
             with self.subTest(body=body):
-                self.assertIn(self.post_raw(body), (400, 422))
+                self.assertIn(self.post_raw(body), self.invalid_statuses)
         for value in (None, {}, {"0": self.snapshot(1)["full"][0]}, "text", 1):
             with self.subTest(full=value):
                 invalid = self.snapshot(3)
                 invalid["full"] = value
-                self.assertIn(self.post(invalid), (400, 422))
+                self.assertIn(self.post(invalid), self.invalid_statuses)
         self.assert_saved(self.snapshot(2))
 
     def test_required_fields_and_types_are_validated(self):
@@ -207,7 +268,7 @@ class SnapshotUploadsTest(unittest.TestCase):
             with self.subTest(missing=field):
                 invalid = self.snapshot(3)
                 del invalid[field]
-                self.assertIn(self.post(invalid), (400, 422))
+                self.assertIn(self.post(invalid), self.invalid_statuses)
         for value in (None, True, 1, [], {}, "\ud800"):
             for nested in (False, True):
                 with self.subTest(transcript=value, nested=nested):
@@ -216,12 +277,12 @@ class SnapshotUploadsTest(unittest.TestCase):
                         invalid["full"][0]["transcript"] = value
                     else:
                         invalid["transcript"] = value
-                    self.assertIn(self.post(invalid), (400, 422))
+                    self.assertIn(self.post(invalid), self.invalid_statuses)
         for entry in (1, [], [1, "text"], {"transcript": "text"}, {"timeStamp": 1}):
             with self.subTest(entry=entry):
                 invalid = self.snapshot(3)
                 invalid["full"] = [entry]
-                self.assertIn(self.post(invalid), (400, 422))
+                self.assertIn(self.post(invalid), self.invalid_statuses)
         self.assert_saved(self.snapshot(2))
 
     def test_invalid_timestamps_leave_saved_snapshot_unchanged(self):
@@ -248,11 +309,11 @@ class SnapshotUploadsTest(unittest.TestCase):
                         invalid["full"][0]["timeStamp"] = value
                     else:
                         invalid["startTime"] = value
-                    self.assertIn(self.post(invalid), (400, 422))
+                    self.assertIn(self.post(invalid), self.invalid_statuses)
         for value in (1.0, 1.5):
             invalid = self.snapshot(3)
             invalid["full"][0]["timeStamp"] = value
-            self.assertIn(self.post(invalid), (400, 422))
+            self.assertIn(self.post(invalid), self.invalid_statuses)
         self.assert_saved(self.snapshot(2))
 
     def test_payload_size_limits_leave_saved_snapshot_unchanged(self):
@@ -265,14 +326,14 @@ class SnapshotUploadsTest(unittest.TestCase):
                         invalid["full"][0]["transcript"] = text
                     else:
                         invalid["transcript"] = text
-                    self.assertIn(self.post(invalid), (400, 422))
+                    self.assertIn(self.post(invalid), self.invalid_statuses)
         for full in (
             [{"timeStamp": 0, "transcript": ""}] * 10001,
             [{"timeStamp": 0, "transcript": "a" * 65536}] * 17,
         ):
             invalid = self.snapshot(3)
             invalid["full"] = full
-            self.assertIn(self.post(invalid), (400, 422))
+            self.assertIn(self.post(invalid), self.invalid_statuses)
         self.assert_saved(self.snapshot(2))
 
     def test_valid_boundary_payloads_are_saved(self):
@@ -293,9 +354,7 @@ class SnapshotUploadsTest(unittest.TestCase):
                 snapshot["startTime"] = value
                 self.assertEqual(self.post(snapshot), 200)
                 self.start_time = int(value)
-                filename = time.strftime(
-                    "%Y-%m-%d %H-%M-%S", time.localtime(int(value))
-                )
+                filename = self.session_filename(value)
                 self.base = self.directory / "data" / filename
                 self.assert_saved(snapshot)
 
@@ -356,7 +415,7 @@ class SnapshotUploadsTest(unittest.TestCase):
             connection.close()
 
     def test_static_files_are_served_and_sibling_traversal_is_rejected(self):
-        if os.environ.get("TRANSCRIBER_TEST_URL"):
+        if self.backend != "python" or os.environ.get("TRANSCRIBER_TEST_URL"):
             self.skipTest("Depends on the spawned backend's directory layout")
         secret = b"sibling secret"
         (self.directory / "static_private.txt").write_bytes(secret)
@@ -374,9 +433,13 @@ class SnapshotUploadsTest(unittest.TestCase):
         self.assertEqual(self.post(other), 200)
         self.assert_saved(self.snapshot(2))
         self.start_time = other["startTime"]
-        filename = time.strftime("%Y-%m-%d %H-%M-%S", time.localtime(self.start_time))
+        filename = self.session_filename(self.start_time)
         self.base = self.directory / "data" / filename
         self.assert_saved(other)
+
+
+class PhpSnapshotUploadsTest(SnapshotUploadsTest):
+    backend = "php"
 
 
 if __name__ == "__main__":
