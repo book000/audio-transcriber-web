@@ -18,6 +18,9 @@ function atomicWrite($path, $content) {
         throw new RuntimeException("Cannot create snapshot file");
     }
     try {
+        if (realpath(dirname($temporary)) !== realpath(dirname($path))) {
+            throw new RuntimeException("Cannot create snapshot file in data directory");
+        }
         if (@file_put_contents($temporary, $content) !== strlen($content)) {
             throw new RuntimeException("Cannot write snapshot file");
         }
@@ -31,23 +34,44 @@ function atomicWrite($path, $content) {
     }
 }
 
-$json = json_decode(@file_get_contents("php://input"), true);
-if (json_last_error() !== JSON_ERROR_NONE || !is_array($json)
-    || !isset($json["startTime"], $json["revision"], $json["full"])
-    || !isset($json["transcript"]) || !is_string($json["transcript"])
-    || !is_numeric($json["startTime"]) || !is_array($json["full"])
-    || !is_int($json["revision"]) || $json["revision"] <= 0
-    || $json["revision"] > 9007199254740991) {
+const MAX_TIMESTAMP = 4102444799;
+const MAX_TRANSCRIPT_BYTES = 65536;
+const MAX_FULL_ENTRIES = 10000;
+const MAX_FULL_BYTES = 1048576;
+
+function validTranscript($value) {
+    return is_string($value) && strlen($value) <= MAX_TRANSCRIPT_BYTES;
+}
+
+$json = json_decode(@file_get_contents("php://input"));
+if (json_last_error() !== JSON_ERROR_NONE || !is_object($json)
+    || !isset($json->startTime, $json->revision, $json->full, $json->transcript)
+    || !validTranscript($json->transcript)
+    || !(is_int($json->startTime) || is_float($json->startTime))
+    || !is_finite((float) $json->startTime)
+    || $json->startTime < 0 || $json->startTime >= MAX_TIMESTAMP + 1
+    || !is_array($json->full) || count($json->full) > MAX_FULL_ENTRIES
+    || !is_int($json->revision) || $json->revision <= 0
+    || $json->revision > 9007199254740991) {
     http_response_code(400);
     exit(json_encode(["status" => false, "message" => "Invalid snapshot"]));
 }
 
-foreach ($json["full"] as $item) {
-    if (!is_array($item) || !isset($item["timeStamp"], $item["transcript"])
-        || !is_int($item["timeStamp"]) || !is_string($item["transcript"])) {
+$fullBytes = 0;
+$full = [];
+foreach ($json->full as $item) {
+    if (!is_object($item) || !isset($item->timeStamp, $item->transcript)
+        || !is_int($item->timeStamp) || $item->timeStamp < 0
+        || $item->timeStamp > MAX_TIMESTAMP || !validTranscript($item->transcript)) {
         http_response_code(400);
         exit(json_encode(["status" => false, "message" => "Invalid transcript entry"]));
     }
+    $fullBytes += strlen($item->transcript);
+    if ($fullBytes > MAX_FULL_BYTES) {
+        http_response_code(400);
+        exit(json_encode(["status" => false, "message" => "Snapshot exceeds the UTF-8 byte limit"]));
+    }
+    $full[] = ["timeStamp" => $item->timeStamp, "transcript" => $item->transcript];
 }
 
 $lock = false;
@@ -55,13 +79,13 @@ try {
     if (!is_dir($directory) && !@mkdir($directory) && !is_dir($directory)) {
         throw new RuntimeException("Cannot create data directory");
     }
-    $base = $directory . "/" . date("Y-m-d H-i-s", (int) $json["startTime"]);
+    $base = $directory . "/" . date("Y-m-d H-i-s", (int) $json->startTime);
     $lock = @fopen($base . ".lock", "c+b");
     if ($lock === false || !flock($lock, LOCK_EX)) {
         throw new RuntimeException("Cannot lock session");
     }
     $snapshotPath = $base . ".snapshot.json";
-    $snapshot = ["revision" => $json["revision"], "full" => $json["full"]];
+    $snapshot = ["revision" => $json->revision, "full" => $full];
     if (file_exists($snapshotPath)) {
         $saved = @file_get_contents($snapshotPath);
         if ($saved === false) {
