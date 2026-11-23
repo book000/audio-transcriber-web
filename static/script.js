@@ -1,5 +1,25 @@
 // Keeps the running instance so the stop button can stop it
 let currentRecognition = null;
+let recognitionRestartTimer = null;
+const recognitionRetryDelays = [1000, 2000, 4000];
+
+function stop_recognition(abort = false) {
+  started = false;
+  clearTimeout(recognitionRestartTimer);
+  recognitionRestartTimer = null;
+  const recognition = currentRecognition;
+  currentRecognition = null;
+  document.getElementById("startstop").innerHTML = "Start recording";
+  document.getElementById("status-circle").style.backgroundColor = "red";
+  listening.remove();
+  if (recognition !== null) {
+    if (abort) {
+      recognition.abort();
+    } else {
+      recognition.stop();
+    }
+  }
+}
 
 /**
  * Returns the browser's speech recognition constructor.
@@ -20,12 +40,12 @@ function newSession() {
   return { id: sessionCounter, startTime: new Date().getTime() / 1000, revision: 0 };
 }
 
-function start_recognition(recognitionId, session) {
+function start_recognition(recognitionId, session, retryCount = 0) {
   const RecognitionConstructor = resolveSpeechRecognition();
   if (RecognitionConstructor === null) {
     document.getElementById("status-message").textContent =
       "Speech recognition is not supported in this browser.";
-    started = false;
+    stop_recognition();
     return;
   }
   document.getElementById("startstop").innerHTML = "Stop recording";
@@ -34,58 +54,107 @@ function start_recognition(recognitionId, session) {
   recognition.continuous = true;
   recognition.interimResults = true;
   recognition.maxAlternatives = 3;
+  let recognitionError = null;
+  let hasFinalTranscript = false;
   recognition.onresult = function (event) {
     console.log(event);
     for (var i = event.resultIndex; i < event.results.length; ++i) {
       const resultId = `${session.id}-${recognitionId}-${i}`;
       if (event.results[i].isFinal) {
+        if (event.results[i][0].transcript.trim().length > 0) {
+          hasFinalTranscript = true;
+          retryCount = 0;
+        }
         listening.end(session, resultId, event.timeStamp, event.results[i]);
-      } else {
+      } else if (currentRecognition === recognition) {
         listening.runResults(resultId, event.timeStamp, event.results[i]);
       }
     }
   };
   recognition.onend = function (event) {
     console.log("onend", event);
-    // After a quick stop and restart, a late onend from the old instance must not clear the new recording's display
-    if (currentRecognition === null || currentRecognition === recognition) {
-      document.getElementById("status-circle").style.backgroundColor = "red";
-      listening.remove();
+    if (currentRecognition !== recognition) {
+      return;
     }
-    // Do not restart unless this is the current instance: it was stopped or already replaced by a new one
-    if (started && currentRecognition === recognition) {
+    currentRecognition = null;
+    document.getElementById("status-circle").style.backgroundColor = "red";
+    listening.remove();
+    if (recognitionError === null && hasFinalTranscript) {
       start_recognition(recognitionId + 1, session);
+      return;
     }
+    if (retryCount >= recognitionRetryDelays.length) {
+      document.getElementById("status-message").textContent =
+        (recognitionError || "Speech recognition ended without a transcript") +
+        ". Automatic retries exhausted. Click Start recording to try again.";
+      stop_recognition();
+      return;
+    }
+    recognitionRestartTimer = setTimeout(() => {
+      recognitionRestartTimer = null;
+      if (started) {
+        start_recognition(recognitionId + 1, session, retryCount + 1);
+      }
+    }, recognitionRetryDelays[retryCount]);
   };
   recognition.onstart = function (event) {
+    if (currentRecognition !== recognition) {
+      return;
+    }
     console.log("onstart", event);
+    document.getElementById("status-message").textContent = "";
     document.getElementById("status-circle").style.backgroundColor = "cyan";
     listening.recognitionStartHandler(event);
   };
   recognition.onaudiostart = function (event) {
+    if (currentRecognition !== recognition) {
+      return;
+    }
     console.log("onaudiostart", event);
     document.getElementById("status-circle").style.backgroundColor =
       "limegreen";
   };
   recognition.onaudioend = function (event) {
+    if (currentRecognition !== recognition) {
+      return;
+    }
     console.log("onaudioend", event);
     document.getElementById("status-circle").style.backgroundColor = "cyan";
   };
   recognition.onspeechstart = function (event) {
+    if (currentRecognition !== recognition) {
+      return;
+    }
     console.log("onspeechstart", event);
     document.getElementById("status-circle").style.backgroundColor = "lime";
   };
   recognition.onspeechend = function (event) {
+    if (currentRecognition !== recognition) {
+      return;
+    }
     console.log("onspeechend", event);
     document.getElementById("status-circle").style.backgroundColor =
       "limegreen";
   };
   recognition.onerror = function (event) {
+    if (currentRecognition !== recognition) {
+      return;
+    }
     console.log("onerror", event);
+    recognitionError = event.error;
     document.getElementById("status-circle").style.backgroundColor = "red";
-    document.getElementById("status-message").innerHTML = event.error;
+    document.getElementById("status-message").textContent = event.error;
+    if (event.error !== "network" && event.error !== "no-speech") {
+      stop_recognition(true);
+    }
   };
-  recognition.start();
+  try {
+    recognition.start();
+  } catch (error) {
+    document.getElementById("status-message").textContent =
+      "Unable to start speech recognition: " + error.message;
+    stop_recognition(true);
+  }
 }
 
 class Listening {
@@ -495,13 +564,7 @@ document.getElementById("startstop").onclick = function () {
     started = true;
     start_recognition(0, newSession());
   } else {
-    document.getElementById("startstop").innerHTML = "Start recording";
-    started = false;
-    if (currentRecognition !== null) {
-      const recognition = currentRecognition;
-      currentRecognition = null;
-      recognition.stop();
-    }
+    stop_recognition();
   }
 };
 
