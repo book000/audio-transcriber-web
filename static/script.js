@@ -66,7 +66,7 @@ function start_recognition(recognitionId, session, retryCount = 0) {
           retryCount = 0;
         }
         listening.end(session, resultId, event.timeStamp, event.results[i]);
-      } else {
+      } else if (currentRecognition === recognition) {
         listening.runResults(resultId, event.timeStamp, event.results[i]);
       }
     }

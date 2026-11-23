@@ -304,6 +304,37 @@ const cases = [
     },
   ]),
   [
+    "late interim results after stop cannot reappear or alter a new recording",
+    () => {
+      const { elements, instances, sandbox } = createRecordingHarness();
+      elements.startstop.onclick();
+      const oldRecognition = instances[0];
+      const interimEvent = {
+        resultIndex: 0,
+        timeStamp: 1000,
+        results: [{ ...finalResult("obsolete speech"), isFinal: false }],
+      };
+      oldRecognition.onresult(interimEvent);
+      elements.startstop.onclick();
+      oldRecognition.onresult(interimEvent);
+      assert.equal(
+        sandbox.listening.getListeningMessagesManager().getMessages().length,
+        0
+      );
+      oldRecognition.onend({});
+      elements.startstop.onclick();
+      instances[1].onresult({
+        ...interimEvent,
+        results: [{ ...finalResult("current speech"), isFinal: false }],
+      });
+      oldRecognition.onresult(interimEvent);
+      oldRecognition.onend({});
+      const messages = sandbox.listening.getListeningMessagesManager().getMessages();
+      assert.equal(messages.length, 1);
+      assert.equal(messages[0].transcript, "current speech");
+    },
+  ],
+  [
     "manual stop releases the recognizer and ignores its late error and end",
     () => {
       const { elements, instances, sandbox, timers } = createRecordingHarness();
