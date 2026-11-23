@@ -1,4 +1,66 @@
 <?php
+$method = $_SERVER["REQUEST_METHOD"];
+$origins = array_values(array_filter(
+    array_map("trim", explode(",", (string) getenv("TRANSCRIPT_ALLOWED_ORIGINS"))),
+    fn($origin) => $origin !== ""
+));
+$token = (string) getenv("TRANSCRIPT_API_TOKEN");
+header("Cache-Control: no-store");
+foreach ($origins as $allowedOrigin) {
+    if (!preg_match('~^https?://(?:\[[0-9a-fA-F:]+\]|[a-zA-Z0-9.-]+)(?::[0-9]+)?$~D', $allowedOrigin)) {
+        http_response_code(503);
+        exit("Invalid CORS configuration");
+    }
+}
+if ($origins !== [] && $token === "") {
+    http_response_code(503);
+    exit("Invalid CORS configuration");
+}
+$origin = $_SERVER["HTTP_ORIGIN"] ?? null;
+$scheme = !empty($_SERVER["HTTPS"]) && $_SERVER["HTTPS"] !== "off" ? "https" : "http";
+$sameOrigin = $scheme . "://" . ($_SERVER["HTTP_HOST"] ?? "");
+$allowed = $origin !== null && in_array($origin, $origins, true);
+if ($origin !== null && $origin !== $sameOrigin && !$allowed) {
+    http_response_code($method === "OPTIONS" ? 400 : 403);
+    exit("Origin is not allowed");
+}
+if ($allowed) {
+    header("Access-Control-Allow-Origin: " . $origin);
+    header("Vary: Origin");
+}
+if ($method === "OPTIONS") {
+    if ($origin !== null && isset($_SERVER["HTTP_ACCESS_CONTROL_REQUEST_METHOD"])) {
+        header("Vary: Origin, Access-Control-Request-Method, Access-Control-Request-Headers, Access-Control-Request-Private-Network");
+        $requestedHeaders = array_filter(array_map(
+            "trim",
+            explode(",", strtolower($_SERVER["HTTP_ACCESS_CONTROL_REQUEST_HEADERS"] ?? ""))
+        ));
+        if (!in_array($_SERVER["HTTP_ACCESS_CONTROL_REQUEST_METHOD"], ["HEAD", "POST", "OPTIONS"], true)
+            || array_diff($requestedHeaders, ["accept", "accept-language", "content-language", "content-type", "authorization"]) !== []
+            || isset($_SERVER["HTTP_ACCESS_CONTROL_REQUEST_PRIVATE_NETWORK"])) {
+            http_response_code(400);
+            exit("Preflight is not allowed");
+        }
+        header("Access-Control-Allow-Methods: HEAD, POST, OPTIONS");
+        header("Access-Control-Allow-Headers: Content-Type, Authorization");
+        header("Access-Control-Max-Age: 600");
+        exit;
+    }
+    http_response_code(204);
+    exit;
+}
+if (!in_array($method, ["HEAD", "POST"], true)) {
+    header("Allow: HEAD, POST, OPTIONS");
+    http_response_code(405);
+    exit;
+}
+[$authScheme, $suppliedToken] = array_pad(explode(" ", $_SERVER["HTTP_AUTHORIZATION"] ?? "", 2), 2, "");
+if ($token !== "" && (strtolower($authScheme) !== "bearer" || !hash_equals($token, $suppliedToken))) {
+    header("WWW-Authenticate: Bearer");
+    http_response_code(401);
+    exit("Authentication required");
+}
+
 $directory = rtrim((string) getenv("TRANSCRIPT_DATA_DIR"), "/");
 if ($directory === "") {
     http_response_code(500);

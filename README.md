@@ -63,6 +63,23 @@ If you turn on `AutoStart`, recording will start the moment you access the page.
   - Upgrading from a version that wrote to `<document root>/data/`: set the variable, then move the old files out of the document root by hand.
 - The frontend alone works without a backend: open `static/index.html` (or the GitHub Pages URL) and leave `API URL` empty.
 
+### Using a separate-origin backend
+
+Cross-origin access is disabled by default. The existing unauthenticated same-origin/direct-client mode is intended only for a trusted LAN; keep the backend behind your LAN firewall. Enabling CORS does not make public deployment supported.
+
+For either backend, set `TRANSCRIPT_ALLOWED_ORIGINS` to a comma-separated list of exact frontend origins, for example `https://book000.github.io,http://localhost:8000`. Include the scheme and any non-default port, without a path or trailing slash. Wildcards and `null` origins (including `file://` pages) are rejected. Serve local standalone pages over HTTP instead.
+
+Also set `TRANSCRIPT_API_TOKEN` to a long, randomly generated secret, then enter that value in the frontend's `API token` field before recording. The token stays in the page and is never saved in localStorage; enter it again after reloading. When configured, it is required as `Authorization: Bearer <token>` for every `POST` and `HEAD`, including same-origin and direct HTTP clients. Preflight `OPTIONS` requests do not require it. A nonempty origin allowlist without a token, or an invalid origin entry, makes the API return HTTP 503 without allowing CORS or writing files.
+
+```bash
+export TRANSCRIPT_ALLOWED_ORIGINS=https://book000.github.io
+read -rsp 'API token: ' TRANSCRIPT_API_TOKEN; echo
+export TRANSCRIPT_API_TOKEN
+python3 main.py
+```
+
+For PHP-FPM, expose both variables through the pool's `env[...]` configuration, as with `TRANSCRIPT_DATA_DIR`; ensure the web server forwards the `Authorization` header to PHP. For nginx/FastCGI this can be set with `fastcgi_param HTTP_AUTHORIZATION $http_authorization;`. Requests from unlisted foreign origins are rejected before writing, even when a valid token is supplied. Use HTTPS whenever the token or transcripts leave a trusted host; mixed-content restrictions and browser local-network access policies still apply independently of CORS. An allowlist permits `HEAD`, JSON `POST`, and `OPTIONS` with `Content-Type` and `Authorization`, without cookie credentials.
+
 ## Tests
 
 ```bash
@@ -75,6 +92,8 @@ The Python tests use the installed `requirements.txt` dependencies and start an 
 The tests cover side-effect-free Python imports, health checks, frontend-shaped Unicode payloads, reordered and concurrent snapshots, independent recording sessions, revision persistence across restarts, invalid JSON and field types, timestamp and UTF-8 size boundaries, storage failures, and export recovery. The PHP development server processes concurrent client requests sequentially, so its concurrent-request case checks the final revision without exercising parallel PHP workers. Both `unittest` discovery and `pytest` collect the backend tests.
 
 To target an externally managed backend instead, serve a disposable copy with transcript storage at `<directory>/data`, then set `TRANSCRIBER_TEST_URL` to its API URL and `TRANSCRIBER_TEST_DIRECTORY` to `<directory>`. For PHP, set `TRANSCRIPT_DATA_DIR` to that data directory outside the document root. The external server must use the same time zone as the test runner. Restart and Python static-file cases are skipped for external backends, and the automatic PHP suite is disabled.
+
+`tests/test_api_access.py` additionally starts isolated backends to check CORS preflights, authenticated uploads and health checks, rejected origins/tokens, invalid configuration, error responses, and unchanged same-origin LAN use. Its PHP cases run automatically when a `php` executable is available; otherwise they are skipped. The Node suite checks that uploads and health checks send the page's token without persisting it.
 
 ## License
 
