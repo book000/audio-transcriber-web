@@ -93,9 +93,12 @@ class SnapshotUploadsTest(unittest.TestCase):
         }
 
     def post(self, snapshot):
+        return self.post_raw(json.dumps(snapshot).encode())
+
+    def post_raw(self, body):
         request = Request(
             self.url,
-            data=json.dumps(snapshot).encode(),
+            data=body,
             headers={"Content-Type": "application/json"},
         )
         try:
@@ -175,6 +178,164 @@ class SnapshotUploadsTest(unittest.TestCase):
             invalid["full"] = [entry]
             self.assertIn(self.post(invalid), (400, 422))
         self.assert_saved(self.snapshot(2))
+
+    def test_invalid_json_shapes_leave_saved_snapshot_unchanged(self):
+        self.assertEqual(self.post(self.snapshot(2)), 200)
+        for body in (
+            b"",
+            b"{",
+            b"null",
+            b"[]",
+            b"1",
+            b'"text"',
+            b"true",
+            b'"\\ud800"',
+            b'{"transcript":"\\ud800"}',
+        ):
+            with self.subTest(body=body):
+                self.assertIn(self.post_raw(body), (400, 422))
+        for value in (None, {}, {"0": self.snapshot(1)["full"][0]}, "text", 1):
+            with self.subTest(full=value):
+                invalid = self.snapshot(3)
+                invalid["full"] = value
+                self.assertIn(self.post(invalid), (400, 422))
+        self.assert_saved(self.snapshot(2))
+
+    def test_required_fields_and_types_are_validated(self):
+        self.assertEqual(self.post(self.snapshot(2)), 200)
+        for field in ("startTime", "revision", "transcript", "full"):
+            with self.subTest(missing=field):
+                invalid = self.snapshot(3)
+                del invalid[field]
+                self.assertIn(self.post(invalid), (400, 422))
+        for value in (None, True, 1, [], {}, "\ud800"):
+            for nested in (False, True):
+                with self.subTest(transcript=value, nested=nested):
+                    invalid = self.snapshot(3)
+                    if nested:
+                        invalid["full"][0]["transcript"] = value
+                    else:
+                        invalid["transcript"] = value
+                    self.assertIn(self.post(invalid), (400, 422))
+        for entry in (1, [], [1, "text"], {"transcript": "text"}, {"timeStamp": 1}):
+            with self.subTest(entry=entry):
+                invalid = self.snapshot(3)
+                invalid["full"] = [entry]
+                self.assertIn(self.post(invalid), (400, 422))
+        self.assert_saved(self.snapshot(2))
+
+    def test_invalid_timestamps_leave_saved_snapshot_unchanged(self):
+        self.assertEqual(self.post(self.snapshot(2)), 200)
+        invalid_values = (
+            None,
+            True,
+            "1600000000",
+            [],
+            {},
+            -1,
+            -0.5,
+            4102444800,
+            10**30,
+            float("nan"),
+            float("inf"),
+            -float("inf"),
+        )
+        for value in invalid_values:
+            for nested in (False, True):
+                with self.subTest(value=value, nested=nested):
+                    invalid = self.snapshot(3)
+                    if nested:
+                        invalid["full"][0]["timeStamp"] = value
+                    else:
+                        invalid["startTime"] = value
+                    self.assertIn(self.post(invalid), (400, 422))
+        for value in (1.0, 1.5):
+            invalid = self.snapshot(3)
+            invalid["full"][0]["timeStamp"] = value
+            self.assertIn(self.post(invalid), (400, 422))
+        self.assert_saved(self.snapshot(2))
+
+    def test_payload_size_limits_leave_saved_snapshot_unchanged(self):
+        self.assertEqual(self.post(self.snapshot(2)), 200)
+        for text in ("a" * 65537, "あ" * 21846):
+            for nested in (False, True):
+                with self.subTest(nested=nested, bytes=len(text.encode())):
+                    invalid = self.snapshot(3)
+                    if nested:
+                        invalid["full"][0]["transcript"] = text
+                    else:
+                        invalid["transcript"] = text
+                    self.assertIn(self.post(invalid), (400, 422))
+        for full in (
+            [{"timeStamp": 0, "transcript": ""}] * 10001,
+            [{"timeStamp": 0, "transcript": "a" * 65536}] * 17,
+        ):
+            invalid = self.snapshot(3)
+            invalid["full"] = full
+            self.assertIn(self.post(invalid), (400, 422))
+        self.assert_saved(self.snapshot(2))
+
+    def test_valid_boundary_payloads_are_saved(self):
+        snapshot = self.snapshot(1)
+        snapshot["transcript"] = "あ" * 21845 + "a"
+        snapshot["full"] = [{"timeStamp": 4102444799, "transcript": "a" * 65536}] * 16
+        self.assertEqual(self.post(snapshot), 200)
+        self.assert_saved(snapshot)
+        snapshot["revision"] = 2
+        snapshot["full"] = [{"timeStamp": 0, "transcript": ""}] * 10000
+        self.assertEqual(self.post(snapshot), 200)
+        self.assert_saved(snapshot)
+
+    def test_start_time_boundaries_are_saved(self):
+        for value in (0, 4102444799.75):
+            with self.subTest(start_time=value):
+                snapshot = self.snapshot(1)
+                snapshot["startTime"] = value
+                self.assertEqual(self.post(snapshot), 200)
+                self.start_time = int(value)
+                filename = time.strftime(
+                    "%Y-%m-%d %H-%M-%S", time.localtime(int(value))
+                )
+                self.base = self.directory / "data" / filename
+                self.assert_saved(snapshot)
+
+    def test_storage_failure_returns_error_without_successful_snapshot(self):
+        self.base.parent.mkdir(exist_ok=True)
+        blocked = Path(str(self.base) + ".lock")
+        blocked.mkdir()
+        try:
+            self.assertEqual(self.post(self.snapshot(1)), 500)
+            self.assertFalse(Path(str(self.base) + ".snapshot.json").exists())
+            self.assertFalse(Path(str(self.base) + ".json").exists())
+        finally:
+            blocked.rmdir()
+        self.assertEqual(self.post(self.snapshot(1)), 200)
+        self.assert_saved(self.snapshot(1))
+
+    def test_unwritable_storage_preserves_saved_snapshot(self):
+        self.assertEqual(self.post(self.snapshot(2)), 200)
+        permissions = self.base.parent.stat().st_mode & 0o777
+        try:
+            self.base.parent.chmod(0o555)
+            if os.access(self.base.parent, os.W_OK):
+                self.skipTest("Current user can bypass directory permissions")
+            self.assertEqual(self.post(self.snapshot(3)), 500)
+        finally:
+            self.base.parent.chmod(permissions)
+        self.assert_saved(self.snapshot(2))
+
+    def test_unknown_fields_are_ignored_and_top_level_timestamp_is_optional(self):
+        snapshot = self.snapshot(1)
+        del snapshot["timeStamp"]
+        snapshot["extra"] = {"ignored": True}
+        snapshot["full"][0]["extra"] = {"ignored": True}
+        self.assertEqual(self.post(snapshot), 200)
+        del snapshot["full"][0]["extra"]
+        self.assert_saved(snapshot)
+        snapshot["revision"] = 9007199254740991
+        snapshot["full"] = []
+        self.assertEqual(self.post(snapshot), 200)
+        self.assert_saved(snapshot)
 
     def test_fractional_start_time_is_truncated(self):
         snapshot = self.snapshot(2)
