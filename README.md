@@ -70,7 +70,11 @@ node tests/speech-recognition-support.test.js
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
-The Python tests use the installed `requirements.txt` dependencies and start an isolated HTTP backend in a temporary directory. They cover reordered and concurrent snapshots, revision persistence across restarts, invalid JSON and field types, timestamp and UTF-8 size boundaries, storage failures, and export recovery. To run the same cases against PHP, serve a disposable copy of `api.php` with `TRANSCRIPT_DATA_DIR` set to `<directory>/data`, then set `TRANSCRIBER_TEST_URL` to its URL and `TRANSCRIBER_TEST_DIRECTORY` to `<directory>`. The PHP server must use the same time zone as the test runner, because file names use server-local time. The external-backend restart case is skipped; verify PHP restart persistence separately.
+The Python tests use the installed `requirements.txt` dependencies and start an isolated HTTP backend in a temporary directory. When `php` is available on `PATH`, the same contract fixtures and request/storage tests also run automatically against a temporary PHP server; otherwise the PHP suite is skipped. Managed servers bind to loopback and use UTC for predictable session filenames. PHP transcript storage stays outside its document root.
+
+The tests cover side-effect-free Python imports, health checks, frontend-shaped Unicode payloads, reordered and concurrent snapshots, independent recording sessions, revision persistence across restarts, invalid JSON and field types, timestamp and UTF-8 size boundaries, storage failures, and export recovery. The PHP development server processes concurrent client requests sequentially, so its concurrent-request case checks the final revision without exercising parallel PHP workers. Both `unittest` discovery and `pytest` collect the backend tests.
+
+To target an externally managed backend instead, serve a disposable copy with transcript storage at `<directory>/data`, then set `TRANSCRIBER_TEST_URL` to its API URL and `TRANSCRIBER_TEST_DIRECTORY` to `<directory>`. For PHP, set `TRANSCRIPT_DATA_DIR` to that data directory outside the document root. The external server must use the same time zone as the test runner. Restart and Python static-file cases are skipped for external backends, and the automatic PHP suite is disabled.
 
 ## License
 

@@ -20,7 +20,7 @@ Browser-based speech-to-text transcriber. The static frontend (`static/`, vanill
 pip3 install -U -r requirements.txt            # Python backend dependencies (exact-pinned)
 python3 main.py --open-browser                 # serve frontend and API on port 8080 (--open-browser also opens a browser)
 node tests/speech-recognition-support.test.js  # frontend regression tests (plain Node, no dependencies)
-python3 -m unittest discover -s tests -p 'test_*.py'  # HTTP backend regression tests (requires pinned requirements)
+python3 -m unittest discover -s tests -p 'test_*.py'  # backend regression tests (requires pinned requirements; PHP optional)
 ```
 
 There is no JS package manager, build step, or JS linter. `.github/workflows/python-ci.yml` (reusable workflow from `book000/templates`) runs Python checks (`compileall`, `ruff check`, `ruff format --check`, `pytest`) with ruff's defaults; pytest also discovers the backend regression tests. Run `ruff check` and `ruff format --check` before pushing Python changes.
@@ -48,4 +48,4 @@ To use the frontend alone, open `static/index.html`. To use the PHP backend inst
 
 ## Verification
 
-Run the Node and HTTP backend regression tests above. The backend tests cover reordered and concurrent requests, revision validation, persistence, and export recovery. Also verify microphone recognition manually: run `python3 main.py`, open the page, grant microphone access, record speech, and confirm that results render and that a `data/<YYYY-MM-DD HH-MM-SS>.{log,json}` pair is written.
+Run the Node and backend regression tests above. `tests/test_snapshot_uploads.py` runs shared HTTP request and storage tests against Python and, when `php` is on `PATH`, PHP. Managed servers bind to loopback, use temporary directories and UTC, and test persistence across restarts. PHP's document root and transcript directory are separate. PHP tests are skipped when PHP is unavailable or `TRANSCRIBER_TEST_URL` selects an externally managed backend. `tests/test_backend_startup.py` verifies that importing `main.py` with `--open-browser` in the arguments neither starts a server, opens a browser, nor creates transcript storage. Also verify microphone recognition manually: run `python3 main.py`, open the page, grant microphone access, record speech, and confirm that results render and that a `data/<YYYY-MM-DD HH-MM-SS>.{log,json}` pair is written.
