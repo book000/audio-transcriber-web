@@ -37,7 +37,13 @@ function createFakeRecognition() {
       startCalls.push(instances.indexOf(this));
     }
 
-    stop() {}
+    stop() {
+      this.stopped = true;
+    }
+
+    abort() {
+      this.aborted = true;
+    }
   }
   return { Fake, instances, startCalls };
 }
@@ -72,15 +78,30 @@ function createSandbox({ globals = {}, autoStart = false }) {
   for (const id of ELEMENT_IDS) {
     elements[id] = createElement(id, id === "auto-start" && autoStart);
   }
+  const timers = new Map();
+  let timerId = 0;
   const sandbox = {
     ...globals,
     document: { getElementById: (id) => elements[id] },
     localStorage: { getItem: () => null },
     setInterval: () => 0,
+    setTimeout: (callback, delay) => {
+      timerId += 1;
+      timers.set(timerId, { callback, delay });
+      return timerId;
+    },
+    clearTimeout: (id) => timers.delete(id),
   };
   sandbox.window = sandbox;
   vm.createContext(sandbox);
-  return { sandbox, elements };
+  function runNextTimer() {
+    assert.equal(timers.size, 1);
+    const [id, timer] = timers.entries().next().value;
+    timers.delete(id);
+    timer.callback();
+    return timer.delay;
+  }
+  return { sandbox, elements, timers, runNextTimer };
 }
 
 /**
@@ -113,10 +134,11 @@ function loadAndClick(options) {
  * Loads script.js with a recording POST stub and a controllable clock.
  * @returns {{ elements: object, instances: object[], posts: object[], clock: { now: number }, sandbox: object }}
  */
-function createRecordingHarness() {
+function createRecordingHarness({ autoStart = false } = {}) {
   const standard = createFakeRecognition();
-  const { sandbox, elements } = createSandbox({
+  const { sandbox, elements, timers, runNextTimer } = createSandbox({
     globals: { SpeechRecognition: standard.Fake },
+    autoStart,
   });
   const posts = [];
   sandbox.axios = {
@@ -144,7 +166,15 @@ function createRecordingHarness() {
   elements.messages.appendChild = () => {};
   elements.api_url.value = "http://localhost:8080/api";
   vm.runInContext(source, sandbox);
-  return { elements, instances: standard.instances, posts, clock, sandbox };
+  return {
+    elements,
+    instances: standard.instances,
+    posts,
+    clock,
+    sandbox,
+    timers,
+    runNextTimer,
+  };
 }
 
 function finalResult(transcript) {
@@ -194,6 +224,232 @@ function recordStopStart() {
 }
 
 const cases = [
+  ...[
+    "not-allowed",
+    "service-not-allowed",
+    "audio-capture",
+    "aborted",
+    "language-not-supported",
+    "phrases-not-supported",
+    "bad-grammar",
+    "unknown-error",
+  ].map((error) => [
+    `${error} stops recording without retrying and allows a manual restart`,
+    () => {
+      const { elements, instances, sandbox, timers } = createRecordingHarness();
+      elements.startstop.onclick();
+      const recognition = instances[0];
+      recognition.onstart({ timeStamp: 0 });
+      recognition.onresult({
+        resultIndex: 0,
+        timeStamp: 1000,
+        results: [
+          finalResult("saved"),
+          { ...finalResult("unfinished"), isFinal: false },
+        ],
+      });
+      recognition.onerror({ error });
+      assert.equal(sandbox.started, false);
+      assert.equal(vm.runInContext("currentRecognition", sandbox), null);
+      assert.equal(elements.startstop.innerHTML, "Start recording");
+      assert.equal(elements["status-circle"].style.backgroundColor, "red");
+      assert.equal(elements["status-message"].textContent, error);
+      assert.equal(recognition.aborted, true);
+      assert.equal(sandbox.listening.getMessagesManager().getMessages().length, 1);
+      assert.equal(
+        sandbox.listening.getListeningMessagesManager().getMessages().length,
+        0
+      );
+      recognition.onend({});
+      assert.equal(instances.length, 1);
+      assert.equal(timers.size, 0);
+      elements.startstop.onclick();
+      instances[1].onstart({ timeStamp: 2000 });
+      assert.equal(sandbox.started, true);
+      assert.equal(elements.startstop.innerHTML, "Stop recording");
+      assert.equal(elements["status-message"].textContent, "");
+    },
+  ]),
+  ...["network", "no-speech", null].map((error) => [
+    `${error || "empty end"} retries three times with backoff, then stops`,
+    () => {
+      const { elements, instances, sandbox, timers, runNextTimer } =
+        createRecordingHarness();
+      elements.startstop.onclick();
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        const recognition = instances[attempt];
+        recognition.onstart({ timeStamp: attempt * 1000 });
+        if (error !== null) {
+          recognition.onerror({ error });
+          assert.equal(timers.size, 0);
+        }
+        recognition.onend({});
+        recognition.onend({});
+        assert.equal(instances.length, attempt + 1);
+        if (attempt < 3) {
+          assert.equal(sandbox.started, true);
+          assert.equal(runNextTimer(), 1000 * 2 ** attempt);
+          assert.equal(instances.length, attempt + 2);
+        }
+      }
+      assert.equal(timers.size, 0);
+      assert.equal(sandbox.started, false);
+      assert.equal(elements.startstop.innerHTML, "Start recording");
+      assert.equal(elements["status-circle"].style.backgroundColor, "red");
+      assert.match(elements["status-message"].textContent, /retries exhausted/);
+      elements.startstop.onclick();
+      instances[4].onerror({ error: "network" });
+      instances[4].onend({});
+      assert.equal(runNextTimer(), 1000);
+    },
+  ]),
+  [
+    "manual stop releases the recognizer and ignores its late error and end",
+    () => {
+      const { elements, instances, sandbox, timers } = createRecordingHarness();
+      elements.startstop.onclick();
+      const oldRecognition = instances[0];
+      elements.startstop.onclick();
+      assert.equal(oldRecognition.stopped, true);
+      assert.equal(sandbox.started, false);
+      assert.equal(elements["status-circle"].style.backgroundColor, "red");
+      elements.startstop.onclick();
+      instances[1].onstart({ timeStamp: 1000 });
+      oldRecognition.onerror({ error: "aborted" });
+      oldRecognition.onend({});
+      assert.equal(sandbox.started, true);
+      assert.equal(instances.length, 2);
+      assert.equal(elements["status-message"].textContent, "");
+      assert.equal(elements["status-circle"].style.backgroundColor, "cyan");
+      assert.equal(timers.size, 0);
+    },
+  ],
+  [
+    "stop cancels a pending retry and a new recording ignores obsolete lifecycle events",
+    () => {
+      const { elements, instances, sandbox, timers } = createRecordingHarness();
+      elements.startstop.onclick();
+      const oldRecognition = instances[0];
+      oldRecognition.onerror({ error: "network" });
+      oldRecognition.onend({});
+      assert.equal(timers.size, 1);
+      elements.startstop.onclick();
+      assert.equal(timers.size, 0);
+      assert.equal(sandbox.started, false);
+      elements.startstop.onclick();
+      instances[1].onstart({ timeStamp: 1000 });
+      instances[1].onresult({
+        resultIndex: 0,
+        timeStamp: 1500,
+        results: [{ ...finalResult("current speech"), isFinal: false }],
+      });
+      oldRecognition.onerror({ error: "not-allowed" });
+      oldRecognition.onend({});
+      oldRecognition.onstart({ timeStamp: 0 });
+      oldRecognition.onaudiostart({});
+      oldRecognition.onaudioend({});
+      oldRecognition.onspeechstart({});
+      oldRecognition.onspeechend({});
+      assert.equal(instances.length, 2);
+      assert.equal(timers.size, 0);
+      assert.equal(sandbox.started, true);
+      assert.equal(elements.startstop.innerHTML, "Stop recording");
+      assert.equal(elements["status-circle"].style.backgroundColor, "cyan");
+      assert.equal(elements["status-message"].textContent, "");
+      assert.equal(
+        sandbox.listening.getListeningMessagesManager().getMessages().length,
+        1
+      );
+    },
+  ],
+  [
+    "a non-empty final transcript resets the retry budget and keeps the upload session",
+    async () => {
+      const { elements, instances, posts, sandbox, runNextTimer } =
+        createRecordingHarness();
+      elements.startstop.onclick();
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        instances[attempt].onerror({ error: "network" });
+        instances[attempt].onend({});
+        assert.equal(runNextTimer(), 1000 * 2 ** attempt);
+      }
+      instances[2].onresult({
+        resultIndex: 0,
+        timeStamp: 1500,
+        results: [finalResult("recovered")],
+      });
+      instances[2].onerror({ error: "network" });
+      instances[2].onend({});
+      assert.equal(runNextTimer(), 1000);
+      instances[3].onresult({
+        resultIndex: 0,
+        timeStamp: 2500,
+        results: [finalResult("still recording")],
+      });
+      await vm.runInContext("uploadQueue", sandbox);
+      assert.deepEqual(posts.map(({ body }) => body.startTime), [1000, 1000]);
+      assert.deepEqual(posts.map(({ body }) => body.revision), [1, 2]);
+      assert.equal(posts[1].body.full.length, 2);
+    },
+  ],
+  [
+    "interim and empty final results do not reset the retry limit",
+    () => {
+      const { elements, instances, sandbox, runNextTimer } =
+        createRecordingHarness();
+      elements.startstop.onclick();
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        instances[attempt].onresult({
+          resultIndex: 0,
+          timeStamp: 1000,
+          results: [
+            { ...finalResult("unfinished"), isFinal: false },
+            finalResult("  "),
+          ],
+        });
+        instances[attempt].onend({});
+        if (attempt < 3) {
+          runNextTimer();
+        }
+      }
+      assert.equal(sandbox.started, false);
+      assert.equal(instances.length, 4);
+    },
+  ],
+  [
+    "an auto-start permission error stops until the user starts again",
+    () => {
+      const { elements, instances, sandbox, timers } = createRecordingHarness({
+        autoStart: true,
+      });
+      instances[0].onerror({ error: "not-allowed" });
+      instances[0].onend({});
+      assert.equal(sandbox.started, false);
+      assert.equal(elements.startstop.innerHTML, "Start recording");
+      assert.equal(timers.size, 0);
+      assert.equal(instances.length, 1);
+    },
+  ],
+  [
+    "a synchronous start failure stops recording without retrying",
+    () => {
+      const standard = createFakeRecognition();
+      standard.Fake.prototype.start = () => {
+        throw new Error("Microphone unavailable");
+      };
+      const { sandbox, elements, loadError, clickError } = loadAndClick({
+        globals: { SpeechRecognition: standard.Fake },
+      });
+      assert.equal(loadError, null);
+      assert.equal(clickError, null);
+      assert.equal(sandbox.started, false);
+      assert.equal(elements.startstop.innerHTML, "Start recording");
+      assert.match(elements["status-message"].textContent, /Microphone unavailable/);
+      assert.equal(standard.instances[0].aborted, true);
+      standard.instances[0].onend({});
+      assert.equal(standard.instances.length, 1);
+    },
+  ],
   [
     "standard SpeechRecognition only",
     () => {

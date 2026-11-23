@@ -52,6 +52,7 @@ If you turn on `AutoStart`, recording will start the moment you access the page.
 
 ## Notes
 
+- Permission, service, microphone, and other non-retryable recognition errors stop recording. Resolve the reported problem, then click `Start recording` to try again. Network errors, no-speech errors, and ends without a final transcript trigger at most three consecutive retries after 1, 2, and 4 seconds. A non-empty final transcript resets that limit; `Stop recording` cancels a pending retry.
 - Transcripts are saved as `<YYYY-MM-DD HH-MM-SS>.log` and `.json`, named after the recording start time (server-local time). `main.py` writes them to `data/`; `api.php` writes them to the directory named by the `TRANSCRIPT_DATA_DIR` environment variable.
 - Uploads are queued in recognition order. Both backends require a positive integer `revision` (at most `9007199254740991`) that increases within each recording; upgrade the frontend and backend together. Older or duplicate revisions cannot replace saved speech.
 - Keep the session `.snapshot.json` and `.lock` sidecars alongside the transcript exports. The snapshot stores the accepted revision and full transcript; a later request repairs incomplete exports from it. Each file is replaced atomically under the session lock, but the files are not published as one atomic group.
