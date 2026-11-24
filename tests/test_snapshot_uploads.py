@@ -159,6 +159,23 @@ class SnapshotUploadsTest(unittest.TestCase):
             {"revision": snapshot["revision"], "full": snapshot["full"]},
         )
 
+    def test_runtime_smoke_imports_starts_and_accepts_post(self):
+        if self.backend != "python" or os.environ.get("TRANSCRIBER_TEST_URL"):
+            self.skipTest("Requires the automatically started Python backend")
+        self.assertIsNone(self.server.poll())
+        status, body = self.get("/")
+        self.assertEqual(status, 200)
+        self.assertEqual(body, (self.directory / "static" / "index.html").read_bytes())
+        with urlopen(Request(self.url, method="HEAD"), timeout=10) as response:
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.read(), b"")
+        snapshot = self.snapshot(1)
+        snapshot["startTime"] += 0.75
+        snapshot["transcript"] = "Runtime smoke 🎤"
+        snapshot["full"][0]["transcript"] = snapshot["transcript"]
+        self.assertEqual(self.post(snapshot), 200)
+        self.assert_saved(snapshot)
+
     def test_reordered_and_duplicate_requests_keep_latest_snapshot(self):
         latest = self.snapshot(2)
         self.assertEqual(self.post(latest), 200)
