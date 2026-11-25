@@ -25,7 +25,7 @@
 ## Requirements
 
 - Chrome 33+ / Edge 79+ ([Can I use SpeechRecognition?](https://caniuse.com/mdn-api_speechrecognition))
-- Python 3.11+ (Python バックエンドを使う場合のみ)
+- Python 3.11–3.15 (`>=3.11,<3.16`、Python バックエンドを使う場合のみ)
 - `requirements.txt`: fastapi, uvicorn
 
 ## Installation & Usage
@@ -71,6 +71,14 @@ python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
 Python テストはインストール済みの `requirements.txt` の依存関係を使用し、一時ディレクトリ内で独立した HTTP バックエンドを起動します。`PATH` 上で `php` が利用可能なら、共通の契約フィクスチャとリクエスト・保存テストを一時的な PHP サーバに対しても自動実行し、利用できなければ PHP のテストをスキップします。管理対象のサーバはループバックにバインドし、セッションのファイル名を一定にするため UTC を使用します。PHP の保存先はドキュメントルートの外に置きます。
+
+Python CI はサポートするすべての Python マイナーバージョン (3.11–3.15) でバックエンドのテストを実行します。ランタイムのスモークテストは `main:app` で Uvicorn を起動し、`GET /` と `HEAD /api` を確認した後、小数の `startTime` を含むフロントエンド形式の Unicode データを `POST /api` に送信し、保存されたスナップショットと文字起こしファイルを検証します。インストール済みの依存関係でこのスモークテストだけを実行するには、次のコマンドを使用してください。
+
+```bash
+python3 -m unittest discover -s tests -p 'test_*.py' -k runtime_smoke -v
+```
+
+スモークテストは常に自動起動する Python バックエンドを使い、PHP と `TRANSCRIBER_TEST_URL` で外部バックエンドを選んだ場合はスキップします。サポート範囲外の Python バージョンは CI の対象に含みません。
 
 副作用のない Python のインポート、ヘルスチェック、フロントエンド形式の Unicode ペイロード、スナップショットの順序逆転と並行送信、録音セッションの分離、再起動後のリビジョン保持、不正な JSON とフィールドの型、タイムスタンプと UTF-8 サイズの境界、保存失敗、出力の復元を検証します。PHP の開発用サーバはクライアントからの並行リクエストを順番に処理するため、並行送信のテストでは PHP ワーカーの並列実行は検証せず、最終リビジョンを確認します。バックエンドのテストは `unittest` の検出と `pytest` の両方で収集されます。
 

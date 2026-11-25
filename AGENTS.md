@@ -14,6 +14,8 @@ Guidance for AI coding agents and contributors. `CLAUDE.md` imports this file, a
 
 Browser-based speech-to-text transcriber. The static frontend (`static/`, vanilla JS plus jQuery) uses the Web Speech API (`SpeechRecognition`, falling back to `webkitSpeechRecognition`) to transcribe microphone audio in real time, shows the results (with recognition alternatives and character diffs on hover), and can POST each finalized transcript to a configurable `API URL`. A small backend writes those POSTs to per-session `.log` and `.json` files under `data/`. The frontend can run standalone (for example from GitHub Pages); the backend is optional.
 
+The Python backend supports Python 3.11–3.15 (`>=3.11,<3.16`).
+
 ## Commands
 
 ```bash
@@ -23,7 +25,7 @@ node tests/speech-recognition-support.test.js  # frontend regression tests (plai
 python3 -m unittest discover -s tests -p 'test_*.py'  # backend regression tests (requires pinned requirements; PHP optional)
 ```
 
-There is no JS package manager, build step, or JS linter. `.github/workflows/python-ci.yml` (reusable workflow from `book000/templates`) runs Python checks (`compileall`, `ruff check`, `ruff format --check`, `pytest`) with ruff's defaults; pytest also discovers the backend regression tests. Run `ruff check` and `ruff format --check` before pushing Python changes.
+There is no JS package manager, build step, or JS linter. `.github/workflows/python-ci.yml` uses the reusable workflow from `book000/templates` with a `python-version` matrix covering every supported minor version, 3.11–3.15. It runs Python checks (`compileall`, `ruff check`, `ruff format --check`, `pytest`) with ruff's defaults; pytest also discovers the backend regression tests and runtime smoke test. Run `ruff check` and `ruff format --check` before pushing Python changes.
 To use the frontend alone, open `static/index.html`. To use the PHP backend instead, put `api.php` on any PHP server and point `API URL` at it. `api.php` requires the `TRANSCRIPT_DATA_DIR` environment variable set to an absolute path outside the document root whose parent directory exists (see `README.md`).
 
 ## Structure
@@ -49,3 +51,5 @@ To use the frontend alone, open `static/index.html`. To use the PHP backend inst
 ## Verification
 
 Run the Node and backend regression tests above. `tests/test_snapshot_uploads.py` runs shared HTTP request and storage tests against Python and, when `php` is on `PATH`, PHP. Managed servers bind to loopback, use temporary directories and UTC, and test persistence across restarts. PHP's document root and transcript directory are separate. PHP tests are skipped when PHP is unavailable or `TRANSCRIBER_TEST_URL` selects an externally managed backend. `tests/test_backend_startup.py` verifies that importing `main.py` with `--open-browser` in the arguments neither starts a server, opens a browser, nor creates transcript storage. Also verify microphone recognition manually: run `python3 main.py`, open the page, grant microphone access, record speech, and confirm that results render and that a `data/<YYYY-MM-DD HH-MM-SS>.{log,json}` pair is written.
+
+`test_runtime_smoke_imports_starts_and_accepts_post` uses the managed Uvicorn fixture to import and start the Python app, fetch the static page, check `HEAD /api`, POST a frontend-shaped Unicode transcript with fractional timestamps, and verify the persisted exports and canonical snapshot. It skips PHP and externally managed backends so a pass confirms this checkout's Python startup path. Run it alone with `python3 -m unittest discover -s tests -p 'test_*.py' -k runtime_smoke -v`.
