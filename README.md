@@ -25,7 +25,7 @@ We do not provide any support.
 ## Requirements
 
 - Chrome 33+ / Edge 79+ ([Can I use SpeechRecognition?](https://caniuse.com/mdn-api_speechrecognition))
-- Python 3.11+ (only for the Python backend)
+- Python 3.11–3.15 (`>=3.11,<3.16`, only for the Python backend)
 - `requirements.txt`: fastapi, uvicorn
 
 ## Installation & Usage
@@ -88,6 +88,14 @@ python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
 The Python tests use the installed `requirements.txt` dependencies and start an isolated HTTP backend in a temporary directory. When `php` is available on `PATH`, the same contract fixtures and request/storage tests also run automatically against a temporary PHP server; otherwise the PHP suite is skipped. Managed servers bind to loopback and use UTC for predictable session filenames. PHP transcript storage stays outside its document root.
+
+Python CI runs the backend suite on every supported Python minor version (3.11–3.15). The runtime smoke test starts Uvicorn with `main:app`, checks `GET /` and `HEAD /api`, then sends a frontend-shaped Unicode `POST /api` with a fractional `startTime` and verifies the saved snapshot and transcript exports. To run just this smoke test with the installed requirements:
+
+```bash
+python3 -m unittest discover -s tests -p 'test_*.py' -k runtime_smoke -v
+```
+
+The smoke test always uses the automatically started Python backend; it is skipped for PHP and when `TRANSCRIBER_TEST_URL` selects an external backend. Python versions outside the supported range are not covered by CI.
 
 The tests cover side-effect-free Python imports, health checks, frontend-shaped Unicode payloads, reordered and concurrent snapshots, independent recording sessions, revision persistence across restarts, invalid JSON and field types, timestamp and UTF-8 size boundaries, storage failures, and export recovery. The PHP development server processes concurrent client requests sequentially, so its concurrent-request case checks the final revision without exercising parallel PHP workers. Both `unittest` discovery and `pytest` collect the backend tests.
 
