@@ -63,6 +63,23 @@
   - `<ドキュメントルート>/data/` に書き込んでいた版からの更新では、変数を設定したうえで、古いファイルをドキュメントルートの外へ手作業で移してください。
 - バックエンドなしでもフロントエンドだけで動作します。`static/index.html` (または GitHub Pages) を開き、`API URL` は空のままにしてください。
 
+### 別オリジンのバックエンドを使う場合
+
+クロスオリジンアクセスは既定で無効です。従来の認証なしの同一オリジン・直接 HTTP クライアントでの利用は、信頼できる LAN 内だけを想定しています。バックエンドは LAN のファイアウォール内に置いてください。CORS を有効にしても、インターネットへの公開運用をサポートするものではありません。
+
+どちらのバックエンドでも、`TRANSCRIPT_ALLOWED_ORIGINS` にフロントエンドの正確なオリジンをカンマ区切りで設定します。例は `https://book000.github.io,http://localhost:8000` です。スキームと、標準以外のポートを含め、パスや末尾のスラッシュは付けないでください。ワイルドカードと `null` オリジン (`file://` のページを含む) は拒否されます。ローカルのフロントエンドも HTTP で配信してください。
+
+併せて `TRANSCRIPT_API_TOKEN` にランダムに生成した長い秘密の値を設定し、録音前にフロントエンドの `API token` 欄へ入力してください。トークンはページ内だけに保持され、localStorage には保存されません。再読み込み後は再入力してください。設定した場合、同一オリジンや直接 HTTP クライアントも含め、すべての `POST` と `HEAD` に `Authorization: Bearer <token>` が必要です。プリフライトの `OPTIONS` にトークンは不要です。オリジンの許可リストが空でないのにトークンがない場合や、オリジンの形式が不正な場合、API は HTTP 503 を返し、CORS を許可せずファイルも書き込みません。
+
+```bash
+export TRANSCRIPT_ALLOWED_ORIGINS=https://book000.github.io
+read -rsp 'API token: ' TRANSCRIPT_API_TOKEN; echo
+export TRANSCRIPT_API_TOKEN
+python3 main.py
+```
+
+PHP-FPM では、`TRANSCRIPT_DATA_DIR` と同様にプールの `env[...]` 設定で両方の変数を公開し、Web サーバから PHP へ `Authorization` ヘッダーが転送されるようにしてください。nginx/FastCGI では `fastcgi_param HTTP_AUTHORIZATION $http_authorization;` で設定できます。許可リストにない別オリジンからのリクエストは、有効なトークンがあっても書き込み前に拒否されます。信頼できるホストの外へトークンや書き起こしを送る場合は HTTPS を使ってください。混在コンテンツの制限やブラウザのローカルネットワークアクセスポリシーは CORS とは別に適用されます。許可リストで有効になるのは `HEAD`、JSON の `POST`、`OPTIONS` と `Content-Type`・`Authorization` ヘッダーで、Cookie 認証は使用しません。
+
 ## Tests
 
 ```bash
@@ -83,6 +100,8 @@ python3 -m unittest discover -s tests -p 'test_*.py' -k runtime_smoke -v
 副作用のない Python のインポート、ヘルスチェック、フロントエンド形式の Unicode ペイロード、スナップショットの順序逆転と並行送信、録音セッションの分離、再起動後のリビジョン保持、不正な JSON とフィールドの型、タイムスタンプと UTF-8 サイズの境界、保存失敗、出力の復元を検証します。PHP の開発用サーバはクライアントからの並行リクエストを順番に処理するため、並行送信のテストでは PHP ワーカーの並列実行は検証せず、最終リビジョンを確認します。バックエンドのテストは `unittest` の検出と `pytest` の両方で収集されます。
 
 外部で管理するバックエンドを対象にする場合は、使い捨てのコピーの保存先を `<ディレクトリ>/data` に設定し、API の URL を `TRANSCRIBER_TEST_URL` に、`<ディレクトリ>` を `TRANSCRIBER_TEST_DIRECTORY` に設定してください。PHP では、ドキュメントルート外のその保存先を `TRANSCRIPT_DATA_DIR` に指定します。外部サーバはテストを実行する環境と同じタイムゾーンにしてください。外部バックエンドでは再起動と Python の静的ファイルのテストをスキップし、自動起動する PHP テストも無効になります。
+
+`tests/test_api_access.py` は独立したバックエンドを起動し、CORS プリフライト、認証付きアップロードとヘルスチェック、許可外のオリジンや不正なトークンの拒否、不正な設定、エラー応答、従来の同一オリジンでの LAN 利用を検証します。`php` 実行ファイルがある場合は PHP のテストも自動実行し、ない場合はスキップします。Node テストでは、アップロードとヘルスチェックがページ内のトークンを保存せず送信することを検証します。
 
 ## ライセンス / License
 

@@ -405,6 +405,11 @@ class MessagesManager {
 
 let uploadQueue = Promise.resolve();
 
+function apiRequestOptions() {
+  const token = document.getElementById("api_token").value;
+  return { headers: token ? { Authorization: "Bearer " + token } : {} };
+}
+
 function sendResult(session, timeStamp, transcript, fullData) {
   const apiurl = document.getElementById("api_url").value;
   if (apiurl == "") {
@@ -417,15 +422,16 @@ function sendResult(session, timeStamp, transcript, fullData) {
     transcript: transcript,
     full: fullData,
   };
+  const options = apiRequestOptions();
   uploadQueue = uploadQueue
-    .then(() => axios.post(apiurl, snapshot))
+    .then(() => axios.post(apiurl, snapshot, options))
     .then(function (response) {
       if (response.status != 200) {
-        console.error(response);
+        console.error("API upload failed[RESPONSE]: " + response.status);
       }
     })
-    .catch(function (error) {
-      console.error(error);
+    .catch(function () {
+      console.error("API upload failed.");
     });
 }
 
@@ -438,14 +444,13 @@ function checkAPIURL() {
     return;
   }
   axios
-    .head(apiurl)
+    .head(apiurl, apiRequestOptions())
     .then(function (response) {
       console.log("API active.");
     })
     .catch(function (error) {
       if (error.response) {
         console.error("API failed[RESPONSE]: " + error.response.status);
-        console.error(error.response);
         if (
           confirm(
             "The API is not working properly(" +
@@ -457,7 +462,6 @@ function checkAPIURL() {
         }
       } else if (error.request) {
         console.error("API failed[REQUEST]:");
-        console.error(error.request);
         if (confirm("The API is not working properly. Close this page?")) {
           window.close();
         }

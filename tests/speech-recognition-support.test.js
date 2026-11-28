@@ -14,6 +14,7 @@ const ELEMENT_IDS = [
   "status-message",
   "status-circle",
   "api_url",
+  "api_token",
   "auto-start",
   "timestamp-display",
   "fullscreen",
@@ -142,8 +143,8 @@ function createRecordingHarness({ autoStart = false } = {}) {
   });
   const posts = [];
   sandbox.axios = {
-    post: (url, body) => {
-      posts.push({ url, body });
+    post: (url, body, options) => {
+      posts.push({ url, body, options });
       return Promise.resolve({ status: 200 });
     },
   };
@@ -479,6 +480,66 @@ const cases = [
       assert.equal(standard.instances[0].aborted, true);
       standard.instances[0].onend({});
       assert.equal(standard.instances.length, 1);
+    },
+  ],
+  [
+    "API token authenticates queued uploads and health checks without persistence",
+    async () => {
+      const { elements, sandbox, posts } = createRecordingHarness();
+      const saved = [];
+      sandbox.localStorage.setItem = (...args) => saved.push(args);
+      elements.api_token.value = "test-only-token";
+      vm.runInContext(
+        'sendResult({startTime: 1000, revision: 0}, 1, "one", [])',
+        sandbox
+      );
+      elements.api_token.value = "changed-token";
+      await vm.runInContext("uploadQueue", sandbox);
+      assert.equal(
+        posts[0].options.headers.Authorization,
+        "Bearer test-only-token"
+      );
+      let headOptions;
+      sandbox.axios.head = (url, options) => {
+        headOptions = options;
+        return Promise.resolve({ status: 200 });
+      };
+      sandbox.started = true;
+      sandbox.checkAPIURL();
+      assert.equal(headOptions.headers.Authorization, "Bearer changed-token");
+      elements.api_token.value = "";
+      sandbox.checkAPIURL();
+      assert.equal(Object.keys(headOptions.headers).length, 0);
+      assert.equal(saved.length, 0);
+    },
+  ],
+  [
+    "authentication failures do not log request objects containing the API token",
+    async () => {
+      const { elements, sandbox } = createRecordingHarness();
+      const logged = [];
+      sandbox.console = { log() {}, error: (...args) => logged.push(...args) };
+      sandbox.confirm = () => false;
+      const failure = {
+        response: {
+          status: 401,
+          config: { headers: { Authorization: "Bearer test-only-token" } },
+        },
+      };
+      elements.api_token.value = "test-only-token";
+      sandbox.axios.post = () => Promise.reject(failure);
+      vm.runInContext(
+        'sendResult({startTime: 1000, revision: 0}, 1, "one", [])',
+        sandbox
+      );
+      await vm.runInContext("uploadQueue", sandbox);
+      sandbox.axios.head = () => Promise.reject(failure);
+      sandbox.started = true;
+      sandbox.checkAPIURL();
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(logged.length, 2);
+      assert.ok(logged.every((entry) => typeof entry === "string"));
+      assert.ok(logged.every((entry) => !entry.includes("test-only-token")));
     },
   ],
   [

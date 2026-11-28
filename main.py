@@ -1,6 +1,8 @@
 import json
 import math
 import os
+import re
+import secrets
 import sys
 import webbrowser
 from contextlib import contextmanager
@@ -11,11 +13,55 @@ from typing import Annotated
 import uvicorn
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import AfterValidator, BaseModel, Field, field_validator
 
 app = FastAPI()
+allowed_origins = [
+    origin.strip()
+    for origin in os.environ.get("TRANSCRIPT_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+api_token = os.environ.get("TRANSCRIPT_API_TOKEN", "")
+valid_cors_config = all(
+    re.fullmatch(r"https?://(?:\[[0-9a-fA-F:]+\]|[a-zA-Z0-9.-]+)(?::[0-9]+)?", origin)
+    for origin in allowed_origins
+) and (not allowed_origins or bool(api_token))
+
+
+@app.middleware("http")
+async def api_access(request, call_next):
+    path = request.scope["path"].removeprefix(request.scope.get("root_path", ""))
+    if path != "/api":
+        return await call_next(request)
+    headers = {"Cache-Control": "no-store"}
+    if not valid_cors_config:
+        return Response("Invalid CORS configuration", status_code=503, headers=headers)
+    origin = request.headers.get("origin")
+    same_origin = request.url.scheme + "://" + request.url.netloc
+    if origin is not None and origin != same_origin and origin not in allowed_origins:
+        return Response("Origin is not allowed", status_code=403, headers=headers)
+    if request.method == "OPTIONS":
+        return Response(status_code=204, headers=headers)
+    if request.method not in ("HEAD", "POST"):
+        return Response(
+            status_code=405, headers={**headers, "Allow": "HEAD, POST, OPTIONS"}
+        )
+    scheme, _, token = request.headers.get("authorization", "").partition(" ")
+    authenticated = scheme.lower() == "bearer" and secrets.compare_digest(
+        api_token.encode(), token.encode()
+    )
+    if api_token and not authenticated:
+        return Response(
+            "Authentication required",
+            status_code=401,
+            headers={**headers, "WWW-Authenticate": "Bearer"},
+        )
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 MAX_TIMESTAMP = 4102444799
@@ -154,6 +200,14 @@ def save_snapshot(data):
 
 
 app.mount("/", StaticFiles(directory="static"), name="static")
+
+if valid_cors_config and allowed_origins:
+    app = CORSMiddleware(
+        app,
+        allow_origins=allowed_origins,
+        allow_methods=["HEAD", "POST", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization"],
+    )
 
 
 if __name__ == "__main__":
